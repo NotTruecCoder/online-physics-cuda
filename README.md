@@ -117,8 +117,12 @@ invariance from mean removal. Each holds for any weights; no training is involve
 - Of the three models, only the coarse-lattice correction clearly beats its classical alternatives out of sample, and
   even it costs more than running finer at this scale. The learned discretization loses to plain substeps. The world
   model plans well but does not generalise as a simulator.
-- Not done: multi-GPU; lazy readback; flowing rivers; a learned simulator over the engine's own fields with the guard
-  as its safety net (the natural next model).
+- Not done: multi-GPU; lazy readback (it needs the per-field bounds that let idle terms be skipped computed on the
+  card, since today they are read off the downloaded cells); flowing rivers; a learned simulator over the engine's own
+  fields with the guard as its safety net (the natural next model).
+- Known issue: one check of gate `voxel_map` fails. Water mana poured every tick while falling, with the law on its own
+  thread and the window moving up and down, ends up more than 3 m under where you land. The horizontal case passes
+  (`voxel_gpu`). 19 other gates pass; `voxel_beyond` runs for over 40 minutes and was not run to its end in this round.
 
 ## What it is
 
