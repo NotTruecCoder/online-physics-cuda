@@ -1,0 +1,17 @@
+build/
+build-core/
+out/
+vcpkg_installed/
+_deps/
+.vs/
+.vscode/
+.idea/
+*.user
+*.suo
+logs/
+imgui.ini
+Testing/
+__pycache__/
+
+*.log
+*.tga

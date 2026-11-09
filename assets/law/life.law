@@ -1,0 +1,197 @@
+# LIFE IS MORE LAW. Turf is a field that grows on soil and burns; scent is a field bodies leave in the
+# air; a creature is a body whose state, wants and appetite are equations over the fields where it
+# stands (see `creature` in src/field/FIELD.md). Nothing in the engine knows about grass or fear.
+
+field grass init 0 range 0 1.01      # turf: lives in the air cell on top of soil
+field scent init 0 range 0 1e5       # what you leave in the air where you walk
+field musk  init 0 range 0 1e5       # what a herd leaves: what hunters follow
+field claw  init 0 range 0 1e5       # where a hunter strikes
+
+param grass_grow   = 0.04    # 1/s: turf thickens on bare fertile ground...
+param grass_seed   = 0.03    #      ...starting from nothing at this fraction (seeds blow in)
+param grass_ignite = 420     # K: dry turf catches before wood does
+param grass_burn   = 1.0     # 1/s: a flame eats turf at a steady rate until it is gone
+param grass_heat   = 3000    # K a burning cell of turf gives (the soil under it drinks most of that)
+param life_grow    = 1.0     # 1/s per unit of life mana: turf comes up at once where life is poured
+param wither       = 0.5     # 1/s: turf with no soil under it, or under water, dies
+param scent_spread = 0.6     # m^2/s
+param scent_fade   = 0.06    # 1/s
+
+param musk_spread  = 0.5     # m^2/s
+param musk_fade    = 0.12    # 1/s
+param claw_fade    = 2.0     # 1/s
+param claw_spread  = 0.8     # m^2/s: a strike reaches about a body's width
+
+param hunger_rate = 0.012    # 1/s: how fast a grazer gets hungry
+param eat_gain    = 0.6      # hunger lost per unit of turf eaten
+param graze       = 0.5      # 1/s: turf a hungry grazer takes from the cell it stands in
+param fear_rise   = 1.5      # 1/s
+param fear_calm   = 0.25     # 1/s
+param scent_fear  = 4.0      # how much a whiff of you frightens
+param starve      = 2.0      # HP/s once hunger is full
+param litter      = 0.04     # newborns/s of a well-fed grown grazer
+param bite        = 25       # HP/s per unit of claw on a grazer
+param hunt_hunger = 0.005    # 1/s: how fast a hunter gets hungry
+param hunt_gain   = 0.8      # hunger a hunter loses per unit of musk it takes
+param hunt_take   = 0.6      # 1/s: musk a hunter takes where it is thick
+param close       = 0.25     # musk this thick means prey within reach
+
+# Soil (stone of material 4) with open air above it.
+# Open air, for what drifts in it.
+derive air = pos(1 - occ)
+
+derive fertile = shift(solid, 0, 0, -1) * step(shift(material, 0, 0, -1) - 3.5) * step(4.5 - shift(material, 0, 0, -1)) * pos(1 - occ - water - lava)
+
+term grass_grows
+  d grass = grass_grow * fertile * (grass_seed + grass) * (1 - grass)
+  max_dt = 0.5 / grass_grow
+
+term life_grows
+  d grass = life_grow * mana_life * fertile * (1 - grass)
+  max_dt = 0.5 / (life_grow * maxof(mana_life) + 0.001)
+
+term grass_withers
+  d grass = -wither * grass * (1 - fertile)
+  max_dt = 0.5 / wither
+
+term grass_burns
+  d grass = -grass_burn * min(1, 10 * grass) * step(T - grass_ignite) * step(alight - alight_min)
+  d T     = grass_heat * grass_burn * min(1, 10 * grass) * step(T - grass_ignite) * step(alight - alight_min)
+  d smoke = smoke_yield * grass_burn * min(1, 10 * grass) * step(T - grass_ignite) * step(alight - alight_min)
+  d alight = alight_gain * min(1, 10 * grass) * step(T - grass_ignite) * step(alight - alight_min) * (1 - alight)
+  max_dt = 0.5 / (10 * grass_burn + alight_gain)
+
+# Fire hot enough burns turf off where it stands, and that is all: nothing is left alight.
+term grass_scorched
+  d grass = -min(scorch_most, scorch * mana_fire) * grass
+  max_dt = 0.4 / scorch_most
+
+term musk_drifts
+  d musk = diffuse(musk_spread * air, musk)
+  conserves musk
+  max_dt = 0.15 * h * h / musk_spread
+
+term musk_fades
+  d musk = -musk_fade * musk
+  max_dt = 0.5 / musk_fade
+
+term claw_fades
+  d claw = diffuse(claw_spread * air, claw) - claw_fade * claw
+  max_dt = min(0.5 / claw_fade, 0.15 * h * h / claw_spread)
+
+term scent_drifts
+  d scent = diffuse(scent_spread * air, scent)
+  conserves scent
+  max_dt = 0.15 * h * h / scent_spread
+
+term scent_fades
+  d scent = -scent_fade * scent
+  max_dt = 0.5 / scent_fade
+
+# You leave scent where you walk.
+creature player
+  emit scent = 40
+
+# A grazer: it gets hungry, walks toward turf and eats it, runs from your scent, from heat, from magic and
+# from a hunter's claw, and when it has eaten well it breeds. Its whole mind is the `seek` line: it climbs the
+# gradient of that expression.
+creature grazer
+  radius 0.3  speed 2.4  hp 40  wander 0.35  sense 2.5
+  colour 0.63 0.49 0.31
+  state hunger init 0.3 range 0 1
+  state fear   init 0   range 0 1
+  d hunger = hunger_rate - eat_gain * eaten
+  d fear   = fear_rise * (harm + scent_fear * scent + mana_fire + mana_force + claw) - fear_calm * fear
+  seek = (0.2 + hunger) * grass - (0.3 + 4 * fear) * scent - 0.02 * fear * (T - ambient)
+  eat grass = graze * hunger * grass
+  emit musk = 12
+  breed = litter * step(0.25 - hunger) * step(age - 20)
+  hurt = starve * step(hunger - 0.98) + bite * claw
+
+# A grazer that PLANS (model 1): no seek line. As it lives it learns how what it sees around it and its own states
+# move with the way it goes (a world model: a neural ODE, trained online in CUDA), and it picks its way by trying a few
+# hundred futures through that model and keeping the cheapest by its plan line (MPPI). What it wants is still the law:
+# the cost is its hunger and fear, the same states the law's equations move.
+creature forager
+  radius 0.3  speed 2.4  hp 40  wander 0.35  sense 2.5
+  colour 0.45 0.62 0.36
+  state hunger init 0.3 range 0 1
+  state fear   init 0   range 0 1
+  d hunger = hunger_rate - eat_gain * eaten
+  d fear   = fear_rise * (harm + scent_fear * scent + mana_fire + mana_force + claw) - fear_calm * fear
+  plan = hunger + 2 * fear - 0.5 * eaten
+  observe grass scent claw T horizon 12 samples 256 dt 0.25
+  eat grass = graze * hunger * grass
+  emit musk = 12
+  breed = litter * step(0.25 - hunger) * step(age - 20)
+  hurt = starve * step(hunger - 0.98) + bite * claw
+
+# A hunter: it follows musk uphill, and where the musk is thick it strikes. It feeds on the musk it takes
+# there, so it lives on herds. It keeps away from fire like anything else.
+creature hunter
+  radius 0.38  speed 3.3  hp 80  wander 0.5  sense 3.0  heed 0.01
+  colour 0.33 0.33 0.38
+  state hunger init 0.4 range 0 1
+  d hunger = hunt_hunger - hunt_gain * eaten
+  seek = (0.2 + hunger) * musk - 0.02 * (T - ambient)
+  eat musk = hunt_take * hunger * musk * step(musk - close)
+  emit claw = 120 * hunger * step(musk - close)
+  hurt = starve * step(hunger - 0.98)
+
+# A fighter: it follows your scent and comes to blows, with the same moves you know. It has no more mind than that, yet.
+creature bandit
+  radius 0.4  speed 4.4  hp 140  wander 0.2  sense 3.0  heed 0.004
+  colour 0.55 0.2 0.2
+  fights sword
+  seek = scent - 0.02 * (T - ambient)
+
+# What there is to hunt. Each is what its seek line and its numbers make of it: a deer smells you from further and runs faster, a boar
+# minds its own business until you hurt it, a wolf comes for you, and a bear is a boar you should have left alone.
+creature deer
+  radius 0.32  speed 6.2  hp 32  wander 0.3  sense 4.0
+  colour 0.6 0.42 0.26
+  state hunger init 0.3 range 0 1
+  state fear   init 0   range 0 1
+  d hunger = hunger_rate - eat_gain * eaten
+  d fear   = fear_rise * (harm + 2 * scent_fear * scent + mana_fire + mana_force + claw) - fear_calm * fear
+  seek = (0.2 + hunger) * grass - (0.5 + 6 * fear) * scent - 0.02 * fear * (T - ambient)
+  eat grass = graze * hunger * grass
+  emit musk = 8
+  hurt = starve * step(hunger - 0.98) + bite * claw
+
+creature boar
+  radius 0.38  speed 4.6  hp 90  wander 0.3  sense 2.5  heed 0.01
+  colour 0.32 0.25 0.2
+  fights tusk skill 1 riled
+  state hunger init 0.3 range 0 1
+  d hunger = hunger_rate - eat_gain * eaten
+  seek = (0.2 + hunger) * grass - 0.02 * (T - ambient)
+  eat grass = graze * hunger * grass
+  emit musk = 10
+  hurt = starve * step(hunger - 0.98)
+
+creature wolf
+  radius 0.34  speed 5.6  hp 60  wander 0.4  sense 3.0  heed 0.005
+  colour 0.42 0.42 0.46
+  fights bite skill 1
+  prey player grazer deer
+  seek = 0.5 * musk + scent - 0.02 * (T - ambient)
+
+creature bear
+  radius 0.52  speed 4.4  hp 240  wander 0.2  sense 2.5  heed 0.01
+  colour 0.3 0.21 0.14
+  fights claw skill 2 riled
+  seek = 0.3 * musk - 0.02 * (T - ambient)
+
+# Those who fight for a living: the arena has them, and the roads may.
+creature duelist
+  radius 0.4  speed 5.0  hp 170  wander 0.2  sense 3.0  heed 0.004
+  colour 0.3 0.3 0.45
+  fights sword skill 3
+  seek = scent - 0.02 * (T - ambient)
+
+creature pikeman
+  radius 0.4  speed 4.2  hp 150  wander 0.2  sense 3.0  heed 0.004
+  colour 0.4 0.35 0.25
+  fights spear skill 2
+  seek = scent - 0.02 * (T - ambient)

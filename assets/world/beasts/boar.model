@@ -1,0 +1,18 @@
+# A beast: all of a piece, with a head. It stands on z 0.
+voxel 0.07
+colour b 78 60 48
+colour d 50 38 32
+colour t 234 228 206
+colour r 40 30 26
+part torso pivot 0 0 6
+  box 3 2 0 4 3 2 r
+  box 3 -3 0 4 -2 2 r
+  box -4 2 0 -3 3 2 r
+  box -4 -3 0 -3 -2 2 r
+  box -6 -3 3 4 3 10 b
+  box -5 -1 10 4 1 11 r
+part head pivot 4 0 8
+  box 4 -3 4 8 3 9 d
+  box 8 -2 4 9 2 6 b
+  box 8 3 5 9 3 8 t
+  box 8 -3 5 9 -3 8 t

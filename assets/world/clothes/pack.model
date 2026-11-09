@@ -1,0 +1,10 @@
+voxel 0.07
+colour c 130 104 70
+colour d 92 70 44
+colour s 60 46 30
+part torso pivot 0 0 10
+  box -8 -4 12 -4 4 19 c
+  box -8 -4 15 -4 4 15 d
+  box -7 -3 20 -5 3 21 d
+  box -4 -3 18 -3 -3 18 s
+  box -4 3 18 -3 3 18 s

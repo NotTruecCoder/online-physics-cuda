@@ -1,0 +1,56 @@
+# ANOTHER BODY ON THE SAME BONES. Broader and taller than the mage, and every clip plays on it unchanged.
+#
+#   voxel SIZE                      metres to a voxel
+#   colour NAME R G B               0-255; a colour named `glow` takes the colour of the spell in hand and is not shaded
+#   part BONE pivot X Y Z           what follows hangs on this bone and turns about this point
+#   socket NAME X Y Z               where something held goes: hand_r, hand_l
+#   box X0 Y0 Z0 X1 Y1 Z1 COLOUR    voxels, both ends included. +x is where you face, +y your left, z 0 under your boots
+#   dot X Y Z COLOUR                one voxel
+#
+# Bones: torso head cape arm_l arm_r leg_l leg_r.
+
+voxel 0.07
+
+colour steel   150 158 170
+colour steel2  112 120 134
+colour dark     56 60 72
+colour gold    214 176 80
+colour slit     18 18 26
+colour plume   170 40 46
+colour boot     62 60 66
+colour glow    255 255 255
+
+part leg_l pivot 0 3 9
+  box -2  1 4   2  4 8  steel
+  box -2  1 0   4  4 3  boot
+part leg_r pivot 0 -3 9
+  box -2 -4 4   2 -1 8  steel
+  box -2 -4 0   4 -1 3  boot
+
+part torso pivot 0 0 9
+  box -3 -5 9   3  5 9  dark
+  box -3 -5 10  3  5 18 steel
+  box -3 -5 10 -3  5 18 steel2
+  box  4 -1 11  4  1 17 gold
+  box -3 -6 6   3  6 8  steel2
+
+part cape pivot -4 0 18
+  box -5 -4 5  -4  4 18 plume
+
+part arm_l pivot 0 7 18
+  box -2  6 10  2  8 19 steel
+  box -2  6 7   2  8 9  dark
+  box  0  6 6   1  8 6  glow
+  socket hand_l 1 7 7
+
+part arm_r pivot 0 -7 18
+  box -2 -8 10  2 -6 19 steel
+  box -2 -8 7   2 -6 9  dark
+  box  0 -8 6   1 -6 6  glow
+  socket hand_r 1 -7 7
+
+part head pivot 0 0 19
+  box -4 -4 19  4  4 26 steel
+  box  5 -3 22  5  3 23 slit
+  box -3 -1 27  3  1 29 plume
+  box -5 -1 25 -4  1 28 plume

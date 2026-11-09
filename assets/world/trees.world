@@ -1,0 +1,84 @@
+# WHAT GROWS, AS TEXT. A tree is not drawn here: these are the numbers its growth is worked out from.
+#
+#   tree NAME biomes B... form F height MIN MAX slender S limbs N levels L spread DEG rise R droop D leaf CELLS flat K bark M colour M share W
+#
+# form: spreading  the trunk gives out into limbs, limbs into branches (an oak)
+#       conifer    the trunk goes all the way up, whorls of short branches around it (a pine)
+#       palm       a bare leaning stem, fronds at the top
+#       column     a stem with arms and no leaves (a cactus)
+#       bush       no trunk to speak of
+#       snag       dead: branches and nothing on them
+#
+# The formulas (WorldMap.cpp, grow_tree):
+#   how thick:   d = (H / S)^(3/2)                 a column of wood buckles under itself past H = c d^(2/3) (Greenhill, McMahon).
+#                                                  `slender` is how close to that this kind lives: larger is thinner.
+#   the taper:   r(z) = r0 (1 - z/H)^(3/4)         and a flare at the roots, that dies away as e^(-z)
+#   a fork:      r_child = r / sqrt(n)             the pipe model: the wood going up is the wood going on (da Vinci)
+#                l_child = l (r_child / r)^(2/3)   elastic similarity: a longer branch must be thicker
+#   a branch:    turned by `rise` toward the light each step, and bent down by its own weight as a cantilever does, in
+#                proportion to (l / r)^2 up to where it has stiffened, times `droop`.
+#   the next one round: 137.5 degrees on from the last (phyllotaxis).
+#
+#   land BIOME big B small S flora F        how thickly big trees (a stand every 10 m), small ones, and plants grow there
+#   flora NAME biomes B... height H colour M share W     what grows on the ground: one to a cell
+#
+# colour and bark are `material` (Terrain.hpp). Barks 16 birch, 17 dark, 18 red, 19 palm; leaves
+# 20 deep, 21 bright, 22 yellow-green, 23 orange, 24 red, 25 pink, 26 blue-green, 27 silver; 28 yellow, 29 white, 30 purple, 31 scarlet.
+
+land Forest    big 0.62 small 0.16 flora 0.07
+land Jungle    big 0.85 small 0.35 flora 0.14
+land Taiga     big 0.5  small 0.12 flora 0.03
+land Swamp     big 0.45 small 0.3  flora 0.10
+land Grassland big 0.10 small 0.12 flora 0.10
+land Savanna   big 0.14 small 0.10 flora 0.04
+land Desert    big 0.05 small 0.06 flora 0.012
+land Tundra    big 0.0  small 0.10 flora 0.03
+land Mountain  big 0.10 small 0.08 flora 0.01
+land Beach     big 0.12 small 0.02 flora 0.01
+
+# ---- forest ----
+tree oak     biomes Forest Grassland       form spreading height 14 26 slender 16 limbs 4 levels 3 spread 42 rise 0.10 droop 0.22 leaf 3.2 flat 0.8 bark 17 colour 20 share 4
+tree beech   biomes Forest                 form spreading height 16 26 slender 22 limbs 3 levels 3 spread 30 rise 0.22 droop 0.10 leaf 3.0 flat 0.9 bark 17 colour 21 share 3
+tree birch   biomes Forest Taiga Grassland form spreading height 10 20 slender 34 limbs 3 levels 2 spread 26 rise 0.28 droop 0.30 leaf 2.4 flat 1.2 bark 16 colour 22 share 2
+tree maple   biomes Forest                 form spreading height 12 22 slender 20 limbs 4 levels 3 spread 38 rise 0.16 droop 0.14 leaf 2.8 flat 0.9 bark 18 colour 23 share 1
+tree redleaf biomes Forest                 form spreading height 9 15 slender 20 limbs 4 levels 2 spread 40 rise 0.14 droop 0.14 leaf 2.8 flat 0.9 bark 17 colour 24 share 1
+tree blossom biomes Grassland Forest       form spreading height 6 11  slender 18 limbs 4 levels 2 spread 44 rise 0.12 droop 0.16 leaf 2.4 flat 0.85 bark 17 colour 25 share 1
+tree hazel   biomes Forest Grassland       form bush      height 2 4   slender 20 limbs 5 levels 1 spread 50 rise 0.20 droop 0.10 leaf 1.8 flat 0.9 bark 17 colour 21 share 3
+
+# ---- jungle ----
+tree kapok   biomes Jungle                 form spreading height 24 34 slender 24 limbs 5 levels 3 spread 46 rise 0.03 droop 0.12 leaf 3.6 flat 0.65 bark 19 colour 20 share 2
+tree fig     biomes Jungle                 form spreading height 14 24 slender 15 limbs 5 levels 3 spread 48 rise 0.14 droop 0.20 leaf 3.2 flat 0.8 bark 17 colour 21 share 3
+tree jpalm   biomes Jungle                 form palm      height 8 16  slender 44 limbs 9 levels 1 spread 0  rise 0.5  droop 1.0  leaf 1.0 flat 1.0 bark 19 colour 21 share 3
+tree ficus   biomes Jungle                 form bush      height 3 6   slender 20 limbs 6 levels 1 spread 50 rise 0.20 droop 0.10 leaf 2.2 flat 0.9 bark 17 colour 20 share 4
+
+# ---- taiga and the heights ----
+tree spruce  biomes Taiga Mountain         form conifer   height 16 28 slender 28 limbs 5 levels 1 spread 74 rise 0.0  droop 0.65 leaf 1.7 flat 1.0 bark 17 colour 26 share 4
+tree pine    biomes Taiga Mountain Forest  form conifer   height 14 26 slender 30 limbs 4 levels 1 spread 82 rise 0.08 droop 0.25 leaf 1.9 flat 0.8 bark 18 colour 20 share 3
+tree larch   biomes Taiga                  form conifer   height 14 26 slender 28 limbs 5 levels 1 spread 72 rise 0.05 droop 0.45 leaf 1.7 flat 1.0 bark 17 colour 26 share 1
+tree dwarf   biomes Tundra Taiga Mountain  form bush      height 1 3   slender 20 limbs 4 levels 1 spread 60 rise 0.10 droop 0.15 leaf 1.5 flat 0.7 bark 17 colour 26 share 3
+
+# ---- wet ground ----
+tree willow  biomes Swamp Grassland        form spreading height 10 18 slender 15 limbs 5 levels 2 spread 46 rise 0.16 droop 1.3  leaf 1.6 flat 1.5 bark 17 colour 27 share 3
+tree cypress biomes Swamp                  form spreading height 14 24 slender 20 limbs 3 levels 2 spread 50 rise 0.04 droop 0.35 leaf 2.0 flat 0.6 bark 18 colour 26 share 2
+tree mangle  biomes Swamp                  form bush      height 2 5   slender 18 limbs 5 levels 1 spread 55 rise 0.10 droop 0.25 leaf 1.8 flat 0.8 bark 17 colour 20 share 3
+
+# ---- dry land ----
+tree acacia  biomes Savanna                form spreading height 8 14  slender 18 limbs 4 levels 3 spread 54 rise 0.02 droop 0.0  leaf 2.2 flat 0.32 bark 18 colour 22 share 4
+tree baobab  biomes Savanna                form spreading height 10 18 slender 10  limbs 6 levels 3 spread 66 rise 0.14 droop 0.02 leaf 2.2 flat 0.7 bark 19 colour 21 share 1
+tree thorn   biomes Savanna Desert         form bush      height 1 3   slender 20 limbs 5 levels 1 spread 60 rise 0.05 droop 0.05 leaf 1.2 flat 0.7 bark 17 colour 22 share 3
+tree saguaro biomes Desert                 form column    height 4 10  slender 16 limbs 3 levels 1 spread 90 rise 0.8  droop 0.0  leaf 0   flat 1.0 bark 21 colour 21 share 3
+tree palm    biomes Beach Desert           form palm      height 7 14  slender 42 limbs 8 levels 1 spread 0  rise 0.5  droop 1.0  leaf 1.0 flat 1.0 bark 19 colour 21 share 2
+
+# ---- what grows on the ground ----
+flora fern      biomes Forest Jungle Swamp        height 1 colour 20 share 8
+flora tuft      biomes Grassland Savanna Forest   height 1 colour 22 share 12
+flora daisy     biomes Grassland Forest           height 1 colour 29 share 1
+flora buttercup biomes Grassland                  height 1 colour 28 share 1
+flora heather   biomes Grassland Tundra Mountain  height 1 colour 30 share 2
+flora poppy     biomes Grassland Savanna          height 1 colour 31 share 1
+flora orchid    biomes Jungle                     height 1 colour 25 share 2
+flora mushroom  biomes Forest Swamp Taiga         height 1 colour 31 share 1
+flora reed      biomes Swamp Beach                height 2 colour 22 share 5
+flora bigfern   biomes Jungle                     height 2 colour 21 share 3
+flora moss      biomes Taiga Tundra Mountain      height 1 colour 27 share 4
+flora drybush   biomes Desert Savanna             height 1 colour 22 share 3

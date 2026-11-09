@@ -1,0 +1,252 @@
+# THE BASE LAW OF THE WORLD. Metres, seconds, kelvin. One voxel = one cell of every field.
+#
+# Everything the world does to itself is written here as fields and the terms that couple them.
+# Magic (magic.law) is more of the same: more terms, more contributions to the same derived fields.
+# The renderer and the bodies read `occ` (what is solid), `sdf` (how far to it), `T` (what glows),
+# `lava`/`water` (what flows), `n` (where light bends), `harm` and `push_*` (what a body feels).
+# Nothing in the engine knows what fire, stone or water is.
+
+# --- what the world is made of (fractions of a voxel) ----------------------------------------------
+# A voxel holds at most one voxel of matter. Every term that ADDS matter to a cell asks how much room
+# is left from the fields themselves (solid + rubble + ice + wood + leaf + lava + water), never from the derived
+# `occ`: a derived field is computed once per step, and a term that runs after stone set or rubble
+# fell earlier in the same step would see last step's room and overfill the cell. The 1% slack in the
+# ranges below is what explicit steps leave when two neighbours flow into one cell in the same
+# substep; anything above it is a bug and is reported.
+field solid    init 0    range 0 1.01              # stone, standing where it was put
+field rubble   init 0    range 0 1.01              # broken stone: falls until something holds it
+field lava     init 0    range 0 1.01              # molten stone: flows, glows, sets when it cools
+field water    init 0    range 0 1.01              # falls, levels out, freezes, boils
+field ice      init 0    range 0 1.01              # frozen water: solid until it thaws
+field wood     init 0    range 0 1.01              # a tree's trunk: solid, and it burns
+field leaf     init 0    range 0 1.01              # a canopy: solid to stand on, burns fast
+field material init 0    range 0 31    static      # albedo palette index of the stone
+field T        init 290  range 0 8000  unit K
+field fuel     init 0    range 0 1     unit fraction    # what is left to burn in a voxel
+field mass     init 0    range 0 1e9   unit kg_m3       # dense matter that pulls (a fallen star)
+field smoke    init 0    range 0 1e4   clamp            # what burning leaves in the air: rises, thins
+field alight   init 0    range 0 1.01  clamp            # flame that takes hold: heat alone does not start a fire, this does
+field built    init 0    range 0 1     static           # put there by someone: however thick, it stands on the ground and is not the ground
+field held     init 1    range 0 1.01  clamp            # how well a voxel is joined to the ground: what is left after all it costs to get there
+field shaken   init 0    range 0 1.01  clamp            # where something just gave way: only there is `held` looked at again
+
+param ambient = 290
+param k_air   = 0.05       # thermal diffusivity, m^2/s (exaggerated for play)
+param k_rock  = 0.6
+param k_water = 0.3
+param k_wood  = 0.15       # a poor conductor: a burning trunk keeps its heat, so the fire walks along it
+param ignite  = 600        # K
+param burn    = 0.5        # 1/s
+param flame   = 2400       # K released by burning the whole voxel
+param cool    = 0.02       # 1/s, radiative loss toward ambient
+
+param melt_point = 1400    # stone melts above, lava sets below
+param melt_rate  = 0.8     # 1/s
+param latent     = 300     # K a voxel of stone soaks up to melt
+param set_rate   = 0.6     # 1/s
+param lava_fall  = 3.0     # m/s
+param lava_level = 0.03    # m^2/s, how fast a pool levels out
+param rubble_fall = 6.0    # m/s
+param rubble_slide = 2.0   # m/s: how fast a heap slumps to its slope
+param crumble = 0.1        # of what breaks, how much lies there after: most of it is dust, gone
+param water_fall  = 8.0    # m/s
+param water_level = 0.3    # m^2/s
+param freeze_point = 273
+param freeze_rate  = 1.0   # 1/s
+param thaw_rate    = 0.6   # 1/s
+param latent_ice   = 80    # K: melting a voxel of ice soaks this much heat (freezing gives it back)
+param boil_point   = 373
+param boil_rate    = 0.6   # 1/s
+param boil_cool    = 400   # K a boiling voxel of water takes with it
+param quench       = 3.0   # 1/s per unit of water touching lava
+
+param G    = 2.0e-3        # game gravity: strong enough to see
+param c2   = 400           # game light speed squared: lensing visible at play scale
+param haze = 4.0e-5        # hot air is optically thinner (mirage over lava)
+param burn_harm = 0.03     # what heat does to a body: HP/s per kelvin above 340
+param air_cool  = 0.6      # 1/s: hot empty AIR sheds its heat fast (stone, lava, water, fuel keep theirs)
+param char_rate = 0.25     # 1/s: wood above `ignite` burns away
+param wood_heat = 3200     # K a whole voxel of wood gives as it burns (a trunk in open air keeps itself alight)
+param smoke_yield = 3.0    # smoke per voxel burnt, per unit of what burns
+param smoke_rise = 1.5     # m/s
+param smoke_spread = 0.2   # m^2/s
+param smoke_fade = 0.35    # 1/s
+param leaf_rate = 0.9      # 1/s: leaves go up faster...
+param leaf_heat = 1200     # K   ...and give less
+param alight_min = 0.05    # less flame than this lights nothing
+param alight_gain = 6      # 1/s: what burns keeps itself alight
+param alight_fade = 1.5    # 1/s
+param alight_spread = 0.25 # m^2/s: flame reaches about sqrt(alight_spread / alight_fade) past what burns
+param lava_catch = 4       # 1/s: lava sets alight what it touches
+param shake_rate = 4       # 1/s: what makes things give way
+param shake_wave = 40      # 1/s: how fast the news goes through what is joined to it, a voxel in each substep
+param shake_loss = 0.96    # of it, across each voxel of matter: about 110 voxels (55 m) and it has died away
+param shake_gap = 0.2      # and this much more is lost across a voxel of air: a cut in a trunk is crossed, a valley is not
+param shake_fade = 0.25    # 1/s
+param hold_rate = 100      # 1/s: how fast a voxel learns how it is held
+param hold_up = 0.006      # of `held`, a voxel resting on the one below: a pile bears a long way
+param hold_stone = 0.06    # going sideways or hanging, through stone: it has no tension in it. Its span is 1 / this, 16 voxels (8 m)
+param hold_fibre = 0.012   # the same through wood and leaves, which bend: 83 voxels (41 m)
+param hold_gone = 0.004    # less than this and nothing holds it
+param fibre_falls = 1      # 0: wood and leaves that come away do it in one piece, as a rigid body (Falling.cpp), not here
+param collapse = 3         # 1/s: what nothing holds up comes down
+
+# --- how a body moves. (Read by the engine: change them here, or on the sliders.) ------------------------
+param body_gravity = 20    # m/s^2: more than the Earth's, so you come down fast
+param body_fall_limit = 45 # m/s
+param body_walk = 7        # m/s
+param body_jump = 10.5     # m/s
+param body_air_control = 28 # m/s^2: added to your speed in the air where you steer
+param body_glide_fall = 2.5 # m/s
+
+# --- what is solid: the one surface for light, bodies and feet ---------------------------------------
+derive occ = solid + rubble + ice + wood + leaf
+# Where a load can go to and be done with it: the ground itself (rock with rock all around it, that nobody put there), or
+# the edge of what the law can see, past which it has to take the world on trust.
+derive footing = min(1, rim + (1 - built) * solid * min(min(min(shift(solid, 1, 0, 0), shift(solid, -1, 0, 0)), min(shift(solid, 0, 1, 0), shift(solid, 0, -1, 0))), min(shift(solid, 0, 0, 1), shift(solid, 0, 0, -1))))
+derive sdf = distance(occ)
+
+# --- heat --------------------------------------------------------------------------------------------
+derive k = k_air + (k_rock - k_air) * (occ + lava) + (k_water - k_air) * water - (k_rock - k_wood) * (wood + leaf)
+
+term conduction
+  d T = diffuse(k, T)
+  conserves T
+  max_dt = 0.15 * h * h / k_rock
+
+term combustion
+  d T    = flame * burn * fuel * step(T - ignite)
+  d fuel = -burn * fuel * step(T - ignite)
+  max_dt = 0.5 / burn
+
+term radiation
+  d T = -(cool + air_cool * pos(1 - occ - lava - water - fuel)) * (T - ambient)
+
+# --- trees: wood and leaves burn away (nothing holds them up: a burnt trunk leaves its crown hanging) ---
+# A flame eats at a steady rate until there is nothing left (the min only rounds off the last tenth, so a
+# step never overshoots zero): a rate proportional to what remains would starve its own flame halfway.
+term wood_burns
+  d wood = -char_rate * min(1, 10 * wood) * step(T - ignite) * step(alight - alight_min)
+  d T    = wood_heat * char_rate * min(1, 10 * wood) * step(T - ignite) * step(alight - alight_min)
+  d smoke = smoke_yield * char_rate * min(1, 10 * wood) * step(T - ignite) * step(alight - alight_min)
+  d alight = alight_gain * min(1, 10 * wood) * step(T - ignite) * step(alight - alight_min) * (1 - alight)
+  max_dt = 0.5 / (10 * char_rate + alight_gain)
+
+term leaves_burn
+  d leaf = -leaf_rate * min(1, 10 * leaf) * step(T - ignite) * step(alight - alight_min)
+  d T    = leaf_heat * leaf_rate * min(1, 10 * leaf) * step(T - ignite) * step(alight - alight_min)
+  d smoke = smoke_yield * leaf_rate * min(1, 10 * leaf) * step(T - ignite) * step(alight - alight_min)
+  d alight = alight_gain * min(1, 10 * leaf) * step(T - ignite) * step(alight - alight_min) * (1 - alight)
+  max_dt = 0.5 / (10 * leaf_rate + alight_gain)
+
+# Flame: it goes out by itself unless something keeps burning, and it reaches only just past what burns.
+term flame_walks
+  d alight = diffuse(alight_spread, alight) - alight_fade * alight
+  max_dt = min(0.15 * h * h / alight_spread, 0.5 / alight_fade)
+
+term lava_lights
+  d alight = lava_catch * lava * (1 - alight)
+  max_dt = 0.5 / lava_catch
+
+# --- what holds what up. Every voxel of matter passes to what rests on it what it has itself, less what the passing costs:
+#     held = 1 at the footing, otherwise max(the one below - hold_up, any other neighbour - the cost through what this is made of).
+# Worked out only where something gave way, so a world where nothing happens pays nothing for it. A voxel that nothing
+# leads back to the footing comes down: stone and wood as rubble (which falls), leaves are gone. A house with its base taken
+# out, a tree cut through, a span too long for stone, are all this one rule.
+term something_gave_way
+  d shaken = shake_rate * min(1, alight * min(1, wood + leaf) + lava) * (1 - shaken)
+  max_dt = 0.5 / shake_rate
+
+term the_news_goes_round
+  d shaken = shake_wave * pos((shake_loss - shake_gap * pos(1 - solid - wood - leaf - ice)) * max(max(max(shift(shaken, 1, 0, 0), shift(shaken, -1, 0, 0)), max(shift(shaken, 0, 1, 0), shift(shaken, 0, -1, 0))), max(shift(shaken, 0, 0, 1), shift(shaken, 0, 0, -1))) - shaken) - shake_fade * shaken
+  max_dt = 0.4 / (shake_wave * step(maxof(shaken) - 0.001) + shake_fade)
+
+term holding
+  d held = hold_rate * step(shaken - 0.01) * (min(1, solid + wood + leaf + ice) * (footing + (1 - footing) * pos(max(shift(held, 0, 0, -1) - hold_up, max(max(max(shift(held, 1, 0, 0), shift(held, -1, 0, 0)), max(shift(held, 0, 1, 0), shift(held, 0, -1, 0))), shift(held, 0, 0, 1)) - hold_stone * (solid + ice) - hold_fibre * (wood + leaf)))) - held)
+  max_dt = 0.9 / (hold_rate * step(maxof(shaken) - 0.01) + 0.001)
+
+term coming_down
+  d solid  = -collapse * solid * step(shaken - 0.01) * step(hold_gone - held)
+  d wood   = -collapse * fibre_falls * wood * step(shaken - 0.01) * step(hold_gone - held)
+  d leaf   = -collapse * fibre_falls * leaf * step(shaken - 0.01) * step(hold_gone - held)
+  d rubble = crumble * collapse * (solid + fibre_falls * wood) * step(shaken - 0.01) * step(hold_gone - held)
+  max_dt = 0.5 / collapse
+
+term smoke_rises
+  d smoke = adv(smoke, 0, 0, smoke_rise) + diffuse(smoke_spread, smoke)
+  max_dt = min(0.4 * h / smoke_rise, 0.15 * h * h / smoke_spread)
+
+term smoke_fades
+  d smoke = -smoke_fade * smoke
+  max_dt = 0.5 / smoke_fade
+
+# --- stone: melts, flows, sets; breaks, falls, piles -----------------------------------------------
+term melting
+  d solid  = -melt_rate * solid * step(T - melt_point)
+  d rubble = -melt_rate * rubble * step(T - melt_point)
+  d lava   = melt_rate * (solid + rubble) * step(T - melt_point)
+  d T      = -latent * melt_rate * (solid + rubble) * step(T - melt_point)
+  conserves solid + rubble + lava
+  max_dt = 0.5 / melt_rate
+
+term setting
+  d lava  = -set_rate * lava * step(melt_point - T)
+  d solid = set_rate * lava * step(melt_point - T)
+  d held  = 20 * lava * step(melt_point - T) * (1 - held)
+  conserves solid + lava
+  max_dt = 0.5 / set_rate
+
+term lava_flow
+  d lava = fall(lava, solid + rubble + ice + wood + leaf + water, lava_fall) + spread(lava, solid + rubble + ice + wood + leaf + water, lava_level)
+  conserves lava
+  max_dt = 0.4 * h / lava_fall
+
+term rubble_falls
+  d rubble = fall(rubble, solid + ice + wood + leaf + lava + water, rubble_fall) + topple(rubble, solid + ice + wood + leaf + lava + water, rubble_slide)
+  conserves rubble
+  max_dt = 0.4 * h / rubble_fall
+
+# --- water: falls, levels, freezes, thaws, boils, quenches lava into stone ---------------------------
+term water_flow
+  d water = fall(water, solid + rubble + ice + wood + leaf + lava, water_fall) + spread(water, solid + rubble + ice + wood + leaf + lava, water_level)
+  conserves water
+  max_dt = 0.4 * h / water_fall
+
+term freezing
+  d water = -freeze_rate * water * step(freeze_point - T)
+  d ice   = freeze_rate * water * step(freeze_point - T)
+  d held  = 20 * water * step(freeze_point - T) * (1 - held)
+  d T     = latent_ice * freeze_rate * water * step(freeze_point - T)
+  conserves water + ice
+  max_dt = 0.5 / freeze_rate
+
+term thawing
+  d ice   = -thaw_rate * ice * step(T - freeze_point)
+  d water = thaw_rate * ice * step(T - freeze_point)
+  d T     = -latent_ice * thaw_rate * ice * step(T - freeze_point)
+  conserves water + ice
+  max_dt = 0.5 / thaw_rate
+
+term boiling
+  d water = -boil_rate * water * step(T - boil_point)
+  d T     = -boil_cool * boil_rate * water * step(T - boil_point)
+  max_dt = 0.5 / boil_rate
+
+term quenching
+  d lava  = -quench * lava * water
+  d solid = quench * lava * water
+  d water = -quench * lava * water
+  conserves solid + lava
+  max_dt = 0.3 / quench
+
+# --- what a body standing in a cell feels --------------------------------------------------------------
+derive harm = burn_harm * pos(T - 340)
+
+# --- gravity and light -----------------------------------------------------------------------------
+derive gsrc = mass
+derive phi  = poisson(4 * pi * G * gsrc, 32)
+derive n    = 1 - 2 * phi / c2 - haze * (T - ambient) * (1 - occ)
+
+# --- what shows in the open air: flame is hot air, smoke is smoke ------------------------------------
+show T     colour 1.0 0.55 0.12  above 480   full 1300  alpha 0.8
+show smoke colour 0.62 0.61 0.60 above 0.25  full 3     alpha 0.28

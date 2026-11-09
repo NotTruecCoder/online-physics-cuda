@@ -1,0 +1,9 @@
+voxel 0.07
+colour c 82 58 38
+colour d 56 38 26
+part leg_l pivot 0 2 10
+  box -2 0 0 3 4 2 d
+  box -2 0 3 2 4 5 c
+part leg_r pivot 0 -2 10
+  box -2 -4 0 3 0 2 d
+  box -2 -4 3 2 0 5 c

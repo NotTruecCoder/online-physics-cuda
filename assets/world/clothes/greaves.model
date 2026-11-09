@@ -1,0 +1,13 @@
+voxel 0.07
+colour c 150 156 168
+colour d 104 112 126
+part torso pivot 0 0 10
+  box -3 -5 9 3 5 10 d
+part leg_l pivot 0 2 10
+  box -2 0 3 2 4 9 c
+part leg_r pivot 0 -2 10
+  box -2 -4 3 2 0 9 c
+part leg_l pivot 0 2 10
+  box 3 1 5 3 3 7 d
+part leg_r pivot 0 -2 10
+  box 3 -3 5 3 -1 7 d

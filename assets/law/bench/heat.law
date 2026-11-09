@@ -1,0 +1,17 @@
+# HEAT, WITH A LEARNED SCHEME (model 3) under guard. The classical one is explicit: stable only for a step under
+# 0.15 h^2 / k, so a larger step takes substeps. The learned one interpolates each face's flux from four cells with
+# weights a net gives (from the local shape and from how big the step is), at twice the step in one pass; its weights
+# sum to zero and start from the classical ones, so an untrained net is diffuse() exactly - and unstable at that step.
+# Whatever it does, a step that breaks a contract (T's range, its total) is undone and taken classically.
+field T init 290 range 0 6000 unit K
+
+param k_heat = 1.0
+
+net heat_ld in 5 hidden 32 32 out 4 act tanh
+
+term conduction
+  d T = diffuse(k_heat, T)
+  conserves T
+  max_dt = 0.15 * h * h / k_heat
+  learned d T = ldiffuse(heat_ld, k_heat, T)
+  learned max_dt = 0.3 * h * h / k_heat

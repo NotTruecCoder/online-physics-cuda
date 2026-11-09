@@ -1,0 +1,19 @@
+# A skin for what is held. The grip is at the origin; +x runs along the blade (held in a hanging hand, it points forward).
+voxel 0.06
+colour blade  190 200 214
+colour edge   238 244 250
+colour dark   120 130 146
+colour guard  198 156 66
+colour grip   74 46 28
+colour pommel 214 176 80
+
+part item pivot 0 0 0
+  box -4 0 0  -1 0 0  grip
+  dot -5 0 0  pommel
+  box  0 -2 -1  0 2 1  guard
+  box  1 0 -1 20 0 1  blade
+  box  1 0 0  20 0 0  dark
+  box  1 0 2  19 0 2  edge
+  box  1 0 -2 19 0 -2 edge
+  box 21 0 -1 21 0 1  edge
+  dot 22 0 0  edge

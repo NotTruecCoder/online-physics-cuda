@@ -1,0 +1,7 @@
+# Hot spots cooling into each other: what the learned scheme of heat.law is measured on.
+grid 96 96 1 1.0
+law assets/law/bench/heat.law
+fill T 290
+ball T 1500 30 40 0 9
+ball T 900 64 60 0 12
+box T 1200 70 10 0 90 24 1

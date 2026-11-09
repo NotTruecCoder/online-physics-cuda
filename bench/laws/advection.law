@@ -1,0 +1,8 @@
+# VERIFICATION: upwind advection at a uniform speed, for the order of convergence (bench/verify.py).
+field F init 0 range -10 10
+
+param u = 1.0
+
+term transport
+  d F = adv(F, u, 0, 0)
+  max_dt = 0.5 * h / u

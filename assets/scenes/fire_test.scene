@@ -1,0 +1,10 @@
+# A small warm world with a fire and some water: every op of the base law has something to do.
+grid 48 40 24 0.5
+law assets/law/world.law
+law assets/law/magic.law
+fill T 290
+box solid 1 0 0 0 48 40 6
+box fuel 1 10 10 6 30 30 8
+ball T 1400 20 20 7 3
+box water 1 34 4 6 44 14 10
+ball mana_fire 4 26 22 8 2

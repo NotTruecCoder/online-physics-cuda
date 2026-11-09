@@ -1,0 +1,6 @@
+# The front on the fine lattice: the reference the coarse one is held to.
+grid 256 16 1 0.5
+law assets/law/bench/front.law
+fill fuel 0.85
+noise fuel 0.15 3
+box T 1500 0 0 0 6 16 1

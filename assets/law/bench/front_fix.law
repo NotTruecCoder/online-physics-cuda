@@ -1,0 +1,9 @@
+# THE LEARNED CORRECTION (model 2) for front.law on a lattice twice as coarse. It moves heat between neighbours by a
+# face flux the net gives from both sides (T and fuel on each), half the difference of both ways round: what leaves a
+# cell is, to the bit, what enters the next, so `conserves T` holds by construction; the flux is limited so no cell
+# goes past T's range in a step. Trained and evaluated by bench/model2_front.py (solver in the loop, against the fine lattice).
+net front_fix in 4 hidden 32 32 out 1 act tanh half
+
+term front_fix
+  d T = flux(front_fix, T, fuel)
+  conserves T

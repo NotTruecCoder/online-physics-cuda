@@ -1,0 +1,234 @@
+# PEOPLE ARE MORE LAW. A town is a creature with no body: its states are the state of things there, and one step of them
+# is a month. A person is a body whose mind is a few states that read the same numbers. The engine (src/field/Society.cpp)
+# only brings numbers in and takes numbers out:
+#
+#   into a town    res inputs of the land: land_soil land_water land_forest land_rock land_ore land_grass, 0..1
+#                  wealth, what the work of the month is worth;
+#                  cult_G, what this people holds in honour; camps, how many camps its opinions fell into;
+#                  ill_will, what the place has heard against you, good_will, what for you
+#   q_G are shares of the work and are kept adding up to 1, so that a share grows only by being better than the others:
+#   that is all a replicator is. No list of jobs is anywhere: a good is a `q_` state, and there is a line of words for it.
+#
+#   into a person  you_near (0..1, if it can see you), struck (you hit it, and it fades), blood (it saw you hurt someone),
+#                  standing (what the place thinks of you), own (what this one holds against you or for you),
+#                  bold, temper, kind (from who it is, 0..1)
+#   out of one     anger past fight_at, it comes for you; fear past flee_at, it runs
+
+# How a rumour goes (a wave on the graph of the roads, one for each fact, one step every rumour_every seconds):
+#   I'' + damp I' = -speed L I / degree + retell w I (1 - I) - forget I, and below a line nobody bothers to pass it on
+param rumour_every = 4
+param rumour_damp  = 0.3
+param rumour_speed = 0.25
+param rumour_retell = 0.25
+param rumour_line  = 0.03
+param rumour_forget = 0.015
+param rumour_far   = 0.8     # a fact matters this much less a road further from where it happened
+param rumour_age   = 0.0006  # and less with every step of it, so what is old gives way
+
+param month_seconds = 20     # of play
+param day_seconds   = 480    # of play: work, the market, home
+param fight_at = 0.55
+param flee_at  = 0.6
+param belief_mix = 0.02      # of its opinions a town gets from its roads, a month
+param caravan_speed = 120    # cells a second, on the road and out of your sight
+param caravan_load = 0.8     # of a town's stock, what a caravan can carry
+param caravan_wait = 25      # seconds it stays in a place
+param goods_unit  = 0.02     # of a town's stock, one thing you can hold
+param incident_every = 60    # seconds of play between things going wrong among the people around you
+
+# How someone thinks in a fight (Melee.cpp, fight_turn): each is what one kind of reason weighs.
+param fight_strike = 1.0     # what a blow is worth for what it does
+param fight_open   = 1.0     # how much more when the other is open
+param fight_risk   = 1.5     # how much less when something is coming and the blow is slow
+param fight_guard  = 1.3     # meeting what is coming
+param fight_back   = 1.5     # keeping away when hurt and timid
+param fight_circle = 1.0     # waiting
+param fight_sees   = 0.09    # seconds into a blow it takes the unskilled to see it; less with skill
+
+param work_learn  = 0.04     # how fast work goes where it pays
+param price_rate  = 0.12
+param stock_use = 0.35       # of what is wanted, what actually comes out of the barns: the rest goes without, or is made at home
+param stock_scale = 5        # a month's work, in what a barn counts
+param stock_spoil = 0.1      # of what is in the barns, what goes off in a month: nobody keeps more than they use for long
+param stock_rate  = 0.14     # how much what is in the barns moves a price, a month
+param grow        = 0.004    # of the people, a month, when there is enough
+param starve_rate = 0.01
+
+creature town
+  state people init 100 range 0 1000000
+  state room   init 100 range 1 1000000
+  state food   init 1   range 0 3
+  state unrest init 0.1 range 0 1
+  state split  init 0   range 0 8
+  state standing init 0 range -1 1
+  state tolerance init 0.12 range 0.04 0.5
+  state wealth init 1 range 0 1000
+  state camps init 1 range 0 32
+  state ill_will init 0 range 0 100
+  state good_will init 0 range 0 100
+  state land_soil init 0 range 0 1
+  state land_water init 0 range 0 1
+  state land_forest init 0 range 0 1
+  state land_rock init 0 range 0 1
+  state land_ore init 0 range 0 1
+  state land_grass init 0 range 0 1
+  state res_grain init 0.3 range 0 3
+  state res_fish init 0.3 range 0 3
+  state res_herd init 0.3 range 0 3
+  state res_wood init 0.3 range 0 3
+  state res_stone init 0.3 range 0 3
+  state res_ore init 0.3 range 0 3
+  state res_guard init 0.3 range 0 3
+  state res_trade init 0.3 range 0 3
+  state q_grain init 0.2 range 0.0005 1
+  state q_fish  init 0.1 range 0.0005 1
+  state q_herd  init 0.1 range 0.0005 1
+  state q_wood  init 0.2 range 0.0005 1
+  state q_stone init 0.1 range 0.0005 1
+  state q_ore   init 0.1 range 0.0005 1
+  state q_guard init 0.1 range 0.0005 1
+  state q_trade init 0.1 range 0.0005 1
+  state stock_grain init 1 range 0 20
+  state stock_fish init 1 range 0 20
+  state stock_herd init 1 range 0 20
+  state stock_wood init 1 range 0 20
+  state stock_stone init 1 range 0 20
+  state stock_ore init 1 range 0 20
+  state stock_guard init 1 range 0 20
+  state stock_trade init 1 range 0 20
+  state p_grain init 1 range 0.05 20
+  state p_fish  init 1 range 0.05 20
+  state p_herd  init 1 range 0.05 20
+  state p_wood  init 1 range 0.05 20
+  state p_stone init 1 range 0.05 20
+  state p_ore   init 1 range 0.05 20
+  state p_guard init 1 range 0.05 20
+  state p_trade init 1 range 0.05 20
+  state cult_grain init 0 range -2 2
+  state cult_fish  init 0 range -2 2
+  state cult_herd  init 0 range -2 2
+  state cult_wood  init 0 range -2 2
+  state cult_stone init 0 range -2 2
+  state cult_ore   init 0 range -2 2
+  state cult_guard init 0 range -2 2
+  state cult_trade init 0 range -2 2
+
+  # What the land gives. More hands make more, each worth less.
+  d res_grain = 0.2 * (0.05 + 1.2 * land_soil - res_grain)
+  d res_fish = 0.2 * (0.03 + 1.4 * land_water - res_fish)
+  d res_herd = 0.2 * (0.05 + 1.0 * land_grass - res_herd)
+  d res_wood = 0.2 * (0.03 + 1.0 * land_forest - res_wood)
+  d res_stone = 0.2 * (0.03 + 0.8 * land_rock - res_stone)
+  d res_ore = 0.2 * (0.02 + 1.2 * land_ore - res_ore)
+  d res_guard = 0.2 * (0.25 - res_guard)
+  d res_trade = 0.2 * (0.1 + 0.002 * sqrt(people) - res_trade)
+
+  # What a share is worth is the price of what it makes, and the people go where that is more.
+  d q_grain = work_learn * q_grain * min(4, p_grain * res_grain * exp(0.3 * cult_grain) / sqrt(q_grain + 0.001) / (wealth + 0.05))
+  d q_fish = work_learn * q_fish * min(4, p_fish * res_fish * exp(0.3 * cult_fish) / sqrt(q_fish + 0.001) / (wealth + 0.05))
+  d q_herd = work_learn * q_herd * min(4, p_herd * res_herd * exp(0.3 * cult_herd) / sqrt(q_herd + 0.001) / (wealth + 0.05))
+  d q_wood = work_learn * q_wood * min(4, p_wood * res_wood * exp(0.3 * cult_wood) / sqrt(q_wood + 0.001) / (wealth + 0.05))
+  d q_stone = work_learn * q_stone * min(4, p_stone * res_stone * exp(0.3 * cult_stone) / sqrt(q_stone + 0.001) / (wealth + 0.05))
+  d q_ore = work_learn * q_ore * min(4, p_ore * res_ore * exp(0.3 * cult_ore) / sqrt(q_ore + 0.001) / (wealth + 0.05))
+  d q_guard = work_learn * q_guard * min(4, p_guard * res_guard * exp(0.3 * cult_guard) / sqrt(q_guard + 0.001) / (wealth + 0.05))
+  d q_trade = work_learn * q_trade * min(4, p_trade * res_trade * exp(0.3 * cult_trade) / sqrt(q_trade + 0.001) / (wealth + 0.05))
+
+  # A price goes up when more is wanted than made, down when less. Wanted: a share of what a town has, by what it holds in honour;
+  # food more when there is not enough, and safety when things are bad. What is in the barns pushes too, and nothing evens
+  # prices out but caravans carrying things from where they are cheap to where they have heard they are dear.
+  d p_grain = p_grain * (price_rate * max(-1, min(1, (0.26 * (1 + 3 * pos(1 - food)) * exp(cult_grain) * wealth / p_grain - res_grain * sqrt(q_grain)) / (0.26 * (1 + 3 * pos(1 - food)) * exp(cult_grain) * wealth / p_grain + res_grain * sqrt(q_grain) + 0.01))) + stock_rate * max(-1, min(1, 1 - stock_grain)))
+  d p_fish = p_fish * (price_rate * max(-1, min(1, (0.14 * (1 + 3 * pos(1 - food)) * exp(cult_fish) * wealth / p_fish - res_fish * sqrt(q_fish)) / (0.14 * (1 + 3 * pos(1 - food)) * exp(cult_fish) * wealth / p_fish + res_fish * sqrt(q_fish) + 0.01))) + stock_rate * max(-1, min(1, 1 - stock_fish)))
+  d p_herd = p_herd * (price_rate * max(-1, min(1, (0.14 * (1 + 3 * pos(1 - food)) * exp(cult_herd) * wealth / p_herd - res_herd * sqrt(q_herd)) / (0.14 * (1 + 3 * pos(1 - food)) * exp(cult_herd) * wealth / p_herd + res_herd * sqrt(q_herd) + 0.01))) + stock_rate * max(-1, min(1, 1 - stock_herd)))
+  d p_wood = p_wood * (price_rate * max(-1, min(1, (0.12 * exp(cult_wood) * wealth / p_wood - res_wood * sqrt(q_wood)) / (0.12 * exp(cult_wood) * wealth / p_wood + res_wood * sqrt(q_wood) + 0.01))) + stock_rate * max(-1, min(1, 1 - stock_wood)))
+  d p_stone = p_stone * (price_rate * max(-1, min(1, (0.08 * exp(cult_stone) * wealth / p_stone - res_stone * sqrt(q_stone)) / (0.08 * exp(cult_stone) * wealth / p_stone + res_stone * sqrt(q_stone) + 0.01))) + stock_rate * max(-1, min(1, 1 - stock_stone)))
+  d p_ore = p_ore * (price_rate * max(-1, min(1, (0.08 * exp(cult_ore) * wealth / p_ore - res_ore * sqrt(q_ore)) / (0.08 * exp(cult_ore) * wealth / p_ore + res_ore * sqrt(q_ore) + 0.01))) + stock_rate * max(-1, min(1, 1 - stock_ore)))
+  d p_guard = p_guard * (price_rate * max(-1, min(1, ((0.05 + 0.3 * unrest + 0.05 * ill_will) * exp(cult_guard) * wealth / p_guard - res_guard * sqrt(q_guard)) / ((0.05 + 0.3 * unrest + 0.05 * ill_will) * exp(cult_guard) * wealth / p_guard + res_guard * sqrt(q_guard) + 0.01))) + stock_rate * max(-1, min(1, 1 - stock_guard)))
+  d p_trade = p_trade * (price_rate * max(-1, min(1, (0.08 * exp(cult_trade) * wealth / p_trade - res_trade * sqrt(q_trade)) / (0.08 * exp(cult_trade) * wealth / p_trade + res_trade * sqrt(q_trade) + 0.01))) + stock_rate * max(-1, min(1, 1 - stock_trade)))
+
+  # What is in the barns and yards of the place: what is made goes in, what is wanted comes out, and caravans bring and take the rest.
+  d stock_grain = stock_scale * (res_grain * sqrt(q_grain) - stock_use * (0.26 * (1 + 3 * pos(1 - food)) * exp(cult_grain) * wealth / p_grain) * min(1, stock_grain / 0.3)) - stock_spoil * stock_grain
+  d stock_fish = stock_scale * (res_fish * sqrt(q_fish) - stock_use * (0.14 * (1 + 3 * pos(1 - food)) * exp(cult_fish) * wealth / p_fish) * min(1, stock_fish / 0.3)) - stock_spoil * stock_fish
+  d stock_herd = stock_scale * (res_herd * sqrt(q_herd) - stock_use * (0.14 * (1 + 3 * pos(1 - food)) * exp(cult_herd) * wealth / p_herd) * min(1, stock_herd / 0.3)) - stock_spoil * stock_herd
+  d stock_wood = stock_scale * (res_wood * sqrt(q_wood) - stock_use * (0.12 * exp(cult_wood) * wealth / p_wood) * min(1, stock_wood / 0.3)) - stock_spoil * stock_wood
+  d stock_stone = stock_scale * (res_stone * sqrt(q_stone) - stock_use * (0.08 * exp(cult_stone) * wealth / p_stone) * min(1, stock_stone / 0.3)) - stock_spoil * stock_stone
+  d stock_ore = stock_scale * (res_ore * sqrt(q_ore) - stock_use * (0.08 * exp(cult_ore) * wealth / p_ore) * min(1, stock_ore / 0.3)) - stock_spoil * stock_ore
+  d stock_guard = stock_scale * (res_guard * sqrt(q_guard) - stock_use * ((0.05 + 0.3 * unrest + 0.05 * ill_will) * exp(cult_guard) * wealth / p_guard) * min(1, stock_guard / 0.3)) - stock_spoil * stock_guard
+  d stock_trade = stock_scale * (res_trade * sqrt(q_trade) - stock_use * (0.08 * exp(cult_trade) * wealth / p_trade) * min(1, stock_trade / 0.3)) - stock_spoil * stock_trade
+
+  # What there is to eat, against how many there are in what the land can hold.
+  d food   = 0.3 * (res_grain * sqrt(q_grain) + res_fish * sqrt(q_fish) + res_herd * sqrt(q_herd) + 0.5 * wealth / (p_grain + p_fish + p_herd)) * 2.0 * sqrt(room / (people + 1)) - 0.3 * food
+  d people = people * (grow * min(1, food) * (1 - people / room) - starve_rate * pos(0.7 - food))
+  # Hunger, camps that have stopped listening to each other, and few to keep the peace. Time and enough to eat calm a place.
+  d split  = 0.2 * (camps - split)
+  d unrest = 0.02 * pos(1 - food) + 0.002 * pos(camps - 1) - 0.02 * q_guard - 0.03 * unrest * min(1, food) + 0.0008
+  d tolerance = 0.002 * (0.14 + 0.1 * min(1, food) - 0.1 * unrest - tolerance)
+  # What it thinks of you is what it has heard, and it forgets.
+  d standing = 0.05 * (max(-1, min(1, good_will - ill_will)) - standing)
+
+  event dear_grain p_grain above 1.7 weight 0.4
+  event cheap_grain p_grain below 0.6 weight 0.3
+  event dear_fish p_fish above 1.7 weight 0.4
+  event cheap_fish p_fish below 0.6 weight 0.3
+  event dear_herd p_herd above 1.7 weight 0.4
+  event cheap_herd p_herd below 0.6 weight 0.3
+  event dear_wood p_wood above 1.7 weight 0.4
+  event cheap_wood p_wood below 0.6 weight 0.3
+  event dear_stone p_stone above 1.7 weight 0.4
+  event cheap_stone p_stone below 0.6 weight 0.3
+  event dear_ore p_ore above 1.7 weight 0.4
+  event cheap_ore p_ore below 0.6 weight 0.3
+  event hunger  food below 0.65 weight 0.55
+  event plenty  food above 1.35 weight 0.2
+  event rising  unrest above 0.8 weight 0.85 sets unrest 0.35
+  event split   split above 2.5 weight 0.5
+  event healed  split below 1.3 weight 0.3
+  event feared  standing below -0.5 weight 0.6
+  event loved   standing above 0.5 weight 0.5
+
+# Someone who lives there. All its mind is three lines: anger and fear rise by what it sees and fade by themselves, and it walks
+# away from heat as anything does. What it does about them is the numbers past fight_at and flee_at.
+creature villager
+  radius 0.36  speed 3.2  hp 70  wander 0.1  sense 2.0  heed 0.01
+  colour 0.6 0.5 0.35
+  fights fists skill 1
+  state anger init 0 range 0 1
+  state fear  init 0 range 0 1
+  state you_near init 0 range 0 1
+  state struck init 0 range 0 1
+  state blood init 0 range 0 1
+  state standing init 0 range -1 1
+  state own init 0 range -1 1
+  state bold init 0.5 range 0 1
+  state temper init 0.5 range 0 1
+  state kind init 0.5 range 0 1
+  d struck = -0.08 * struck
+  d blood = -0.06 * blood
+  d anger = 2.5 * struck * (0.2 + bold * temper) + 0.5 * blood * temper * bold * step(0.4 - own - standing) + 0.15 * you_near * pos(-0.4 - own - standing) * temper - 0.06 * anger
+  d fear = 2.5 * struck * (1 - bold) + 1.2 * blood * (1 - bold) + 0.4 * you_near * pos(-0.3 - own - standing) * (1 - bold) + 1.2 * harm + 0.5 * (1 - hp / 70) * (1 - bold) - 0.1 * fear
+  seek = -0.05 * (T - ambient)
+  # Where to go when it is afraid is planned (model 1 on the social layer): it learns, from its own life and its
+  # town's, how its fear, the blows it takes and the blood it sees move with the way it runs, and runs the way that
+  # leaves it least afraid. Its day (work, market, home) is still its town's.
+  plan = fear + 2 * struck + 0.5 * blood
+  observe harm T horizon 10 samples 128 dt 0.25
+
+# Someone who is paid to do something about it.
+creature watchman
+  radius 0.4  speed 4.2  hp 170  wander 0.1  sense 3.0  heed 0.01
+  colour 0.55 0.58 0.65
+  fights sword skill 3
+  state anger init 0 range 0 1
+  state fear  init 0 range 0 1
+  state you_near init 0 range 0 1
+  state struck init 0 range 0 1
+  state blood init 0 range 0 1
+  state standing init 0 range -1 1
+  state own init 0 range -1 1
+  state bold init 0.8 range 0 1
+  state temper init 0.5 range 0 1
+  state kind init 0.5 range 0 1
+  d struck = -0.08 * struck
+  d blood = -0.03 * blood
+  d anger = 4 * struck + 2 * blood + 0.6 * you_near * pos(-0.3 - own - standing) - 0.03 * anger
+  d fear = 0.8 * harm + 0.25 * (1 - hp / 170) * (1 - bold) - 0.15 * fear
+  seek = -0.05 * (T - ambient)

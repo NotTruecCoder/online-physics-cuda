@@ -1,0 +1,33 @@
+# THE LAND'S OWN LAW. One cell per node of the map (128 m): what each can feed, and the life it feeds, as densities.
+# It runs far from any voxel, every ten seconds, with the same engine as everything else. New chunks are peopled
+# from these numbers, so what happens to the herds in one place shows up in the next place you walk to.
+
+field capacity init 0 range 0 1.01 static     # what the land can feed: from the biome
+field grazers  init 0 range 0 4               # per node, in chunks' worth of herd
+field hunters  init 0 range 0 4
+
+param g_rate   = 0.004   # 1/s: a herd grows into what the land feeds
+param g_roam   = 80      # m^2/s
+param h_rate   = 0.01    # 1/s, per unit of prey it eats
+param h_death  = 0.0015  # 1/s: a hunter with nothing to eat
+param h_roam   = 160     # m^2/s
+param h_eat    = 0.006   # 1/s, per unit of hunter
+
+term herds_grow
+  d grazers = g_rate * grazers * (capacity - grazers)
+  max_dt = 0.25 / g_rate
+
+term herds_roam
+  d grazers = diffuse(g_roam * step(capacity - 0.01), grazers)
+  conserves grazers
+  max_dt = 0.15 * h * h / g_roam
+
+term hunted
+  d grazers = -h_eat * grazers * hunters
+  d hunters = h_rate * h_eat * 25 * grazers * hunters - h_death * hunters
+  max_dt = 0.25 / h_eat
+
+term hunters_roam
+  d hunters = diffuse(h_roam * step(capacity - 0.01), hunters)
+  conserves hunters
+  max_dt = 0.15 * h * h / h_roam

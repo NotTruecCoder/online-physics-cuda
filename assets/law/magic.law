@@ -1,0 +1,192 @@
+# MAGIC IS MORE LAW. A spell does exactly one thing: it pours mana of its element into the voxels
+# where it lands (assets/law/spells.law says how much and in what shape). What that mana then DOES
+# is written here, as terms over the same fields the world runs on — so fire melts a wall because
+# heat melts stone, a force bolt breaks one because broken stone is rubble and rubble falls, and an
+# earth spell raises one because its mana sets into stone wherever there is room. Nothing in the
+# engine knows this file exists.
+
+field mana       init 0 range 0 1e4 unit mana    # raw mana: kindles fuel, has weight
+field mana_fire  init 0 range 0 1e4
+field mana_earth init 0 range 0 1e4
+field mana_force init 0 range 0 1e4
+field mana_water init 0 range 0 1e4
+field mana_ice   init 0 range 0 1e4
+field mana_air   init 0 range 0 1e4
+field mana_storm init 0 range 0 1e4
+field mana_life  init 0 range 0 1e4
+field mana_pull  init 0 range 0 1e4
+field mana_cut   init 0 range 0 1e4
+field mana_ember init 0 range 0 1e4
+
+param mana_spread = 0.2    # m^2/s
+param mana_fade   = 0.25   # 1/s: mana not held by anything thins out
+param mana_heat   = 60     # K/s per unit of mana sitting in fuel (it kindles)
+param mana_weight = 0.004  # mana has weight: it pulls, and bends light
+
+param fire_heat  = 70      # K/s per unit of fire mana
+param fire_fade  = 1.2     # 1/s
+param scorch     = 0.25    # 1/s per unit of fire mana: fire this hot eats wood and leaves where it stands. They do not catch: no flame is left to walk.
+param scorch_most = 6      # 1/s: however hot, it burns no faster than this
+param ember_heat = 220     # K/s per unit of ember mana: a small fire, but one that takes hold
+param ember_catch = 3      # 1/s per unit of ember mana
+param ember_fade = 2       # 1/s
+param storm_catch = 2      # 1/s per unit of storm mana: lightning starts fires
+param earth_rate = 4.0     # 1/s: how fast earth mana sets into stone where there is room
+param earth_fade = 0.8     # 1/s: what finds no room thins out
+param shatter    = 2.5     # 1/s per unit of force mana: stone (and wood) breaking into rubble
+param strip      = 4.0     # 1/s per unit of force mana: leaves torn off and blown away
+param force_fade = 3.0     # 1/s
+param cleave     = 30      # 1/s per unit of cutting mana: what it passes through is simply not there after
+param cut_fade   = 12      # 1/s
+param force_push = 32      # m/s^2 per unit of force-mana gradient on a body
+param condense   = 5.0     # 1/s: water mana becoming water where there is room
+param water_fade = 1.0     # 1/s
+param ice_cold   = 1.6     # 1/s per unit of ice mana: heat drawn out of a voxel (toward 0 K)
+param ice_fade   = 1.5     # 1/s
+param air_push   = 18      # m/s^2 per unit of air-mana gradient on a body
+param air_lift   = 9       # m/s^2 per unit of air mana: an updraft (cast at your feet to be thrown up)
+param air_fade   = 2.5     # 1/s
+param storm_heat = 300     # K/s per unit of storm mana: lightning kindles
+param storm_harm = 18      # HP/s per unit of storm mana on a body...
+param storm_wet  = 2       # ...and this many times more, standing in water
+param storm_fade = 5.0     # 1/s
+param life_heal  = 12      # HP/s per unit of life mana: a body mends
+param life_fade  = 1.5     # 1/s
+param pull_force = 40      # m/s^2 per unit of pull-mana gradient on a body: toward where it is thick
+param pull_fade  = 1.0     # 1/s
+
+term mana_flow
+  d mana = diffuse(mana_spread, mana)
+  conserves mana
+  max_dt = 0.15 * h * h / mana_spread
+
+term mana_fade
+  d mana = -mana_fade * mana
+  max_dt = 0.5 / mana_fade
+
+term mana_kindles
+  d T = mana_heat * mana * fuel
+
+# --- fire: heat -------------------------------------------------------------------------------------
+term fire_burns
+  d T         = fire_heat * mana_fire
+  d mana_fire = -fire_fade * mana_fire
+  max_dt = 0.5 / fire_fade
+
+term fire_scorches
+  d wood = -min(scorch_most, scorch * mana_fire) * wood
+  d leaf = -min(scorch_most, scorch * mana_fire) * leaf
+  max_dt = 0.4 / scorch_most
+
+# --- ember: what you start a fire with. Grass, trees and wooden houses go on burning by themselves after this. ---
+term ember_catches
+  d T          = ember_heat * mana_ember
+  d alight     = ember_catch * mana_ember * (1 - alight)
+  d mana_ember = -ember_fade * mana_ember
+  max_dt = 0.4 / (ember_catch * maxof(mana_ember) + ember_fade)
+
+# --- earth: stone sets wherever there is room --------------------------------------------------------
+term earth_sets
+  d solid      = earth_rate * mana_earth * pos(1 - solid - rubble - ice - wood - leaf - lava - water)
+  d mana_earth = -earth_rate * mana_earth * pos(1 - solid - rubble - ice - wood - leaf - lava - water)
+  d held       = 20 * mana_earth * (1 - held)
+  conserves solid + mana_earth
+  max_dt = 0.4 / (earth_rate * (1 + maxof(mana_earth)))
+
+term earth_fades
+  d mana_earth = -earth_fade * mana_earth
+  max_dt = 0.5 / earth_fade
+
+# --- force: stone breaks into rubble (and rubble falls: world.law), bodies are thrown ---------------
+term force_shatters
+  d solid  = -shatter * solid * mana_force
+  d wood   = -shatter * wood * mana_force
+  d rubble = crumble * shatter * (solid + wood) * mana_force
+  d leaf   = -strip * leaf * mana_force
+  max_dt = 0.4 / ((shatter + strip) * maxof(mana_force) + 0.001)
+
+term force_shakes
+  d shaken = shake_rate * min(1, pos(mana_force - 0.05)) * (1 - shaken)
+  max_dt = 0.5 / shake_rate
+
+term force_fades
+  d mana_force = -force_fade * mana_force
+  max_dt = 0.5 / force_fade
+
+# --- a cut: a clean edge, and nothing left over ---------------------------------------------------------
+term cut_takes
+  d solid  = -cleave * solid * mana_cut
+  d wood   = -cleave * wood * mana_cut
+  d leaf   = -cleave * leaf * mana_cut
+  d rubble = -cleave * rubble * mana_cut
+  d ice    = -cleave * ice * mana_cut
+  max_dt = 0.4 / (cleave * maxof(mana_cut) + 0.001)
+
+term cut_shakes
+  d shaken = shake_rate * min(1, pos(mana_cut - 0.05)) * (1 - shaken)
+  max_dt = 0.5 / shake_rate
+
+term cut_fades
+  d mana_cut = -cut_fade * mana_cut
+  max_dt = 0.5 / cut_fade
+
+# --- water: it condenses where there is room ----------------------------------------------------------
+term water_condenses
+  d water      = condense * mana_water * pos(1 - solid - rubble - ice - wood - leaf - lava - water)
+  d mana_water = -condense * mana_water * pos(1 - solid - rubble - ice - wood - leaf - lava - water)
+  conserves water + mana_water
+  max_dt = 0.4 / (condense * (1 + maxof(mana_water)))
+
+term water_mana_fades
+  d mana_water = -water_fade * mana_water
+  max_dt = 0.5 / water_fade
+
+# --- ice: heat is drawn out (so water freezes by world.law) ------------------------------------------
+term ice_chills
+  d T        = -ice_cold * mana_ice * T
+  d mana_ice = -ice_fade * mana_ice
+  max_dt = 0.4 / (ice_cold * maxof(mana_ice) + ice_fade)
+
+# --- air: a gust that moves bodies ------------------------------------------------------------------
+term air_fades
+  d mana_air = -air_fade * mana_air
+  max_dt = 0.5 / air_fade
+
+# --- storm: it hurts, more in water, and it kindles ------------------------------------------------------
+term storm_burns
+  d T          = storm_heat * mana_storm
+  d alight     = storm_catch * mana_storm * (1 - alight)
+  d mana_storm = -storm_fade * mana_storm
+  max_dt = 0.4 / (storm_catch * maxof(mana_storm) + storm_fade)
+
+# --- life: bodies mend in it (and turf grows: life.law) ---------------------------------------------------
+term life_fades
+  d mana_life = -life_fade * mana_life
+  max_dt = 0.5 / life_fade
+
+# --- pull: the one mana that draws bodies in ----------------------------------------------------------------
+term pull_fades
+  d mana_pull = -pull_fade * mana_pull
+  max_dt = 0.5 / pull_fade
+
+# What a body feels from magic: pushed down the gradient of force and air mana, up the gradient of pull.
+derive push_x = -force_push * gx(mana_force) - air_push * gx(mana_air) + pull_force * gx(mana_pull)
+derive push_y = -force_push * gy(mana_force) - air_push * gy(mana_air) + pull_force * gy(mana_pull)
+derive push_z = -force_push * gz(mana_force) - air_push * gz(mana_air) + air_lift * mana_air + pull_force * gz(mana_pull)
+
+# The same derived fields the base law builds; magic only adds to them.
+derive gsrc += mana_weight * mana
+derive harm += storm_harm * mana_storm * (1 + storm_wet * water) - life_heal * mana_life
+
+# What mana looks like in the air.
+show mana_fire  colour 1.0  0.45 0.10  above 0.3  full 8    alpha 0.6
+show mana_ice   colour 0.65 0.88 1.0   above 0.2  full 3    alpha 0.5
+show mana_earth colour 0.55 0.42 0.25  above 0.1  full 1.2  alpha 0.5
+show mana_force colour 0.85 0.85 1.0   above 0.2  full 3    alpha 0.4
+show mana_water colour 0.25 0.5  0.95  above 0.1  full 1.5  alpha 0.5
+show mana_air   colour 0.8  0.97 0.9   above 0.15 full 3    alpha 0.3
+show mana_storm colour 0.65 0.72 1.0   above 0.2  full 5    alpha 0.75
+show mana_life  colour 0.45 1.0  0.5   above 0.2  full 5    alpha 0.45
+show mana_ember colour 1.0  0.75 0.25  above 0.2  full 4    alpha 0.7
+show mana_pull  colour 0.45 0.25 0.85  above 0.15 full 3    alpha 0.5
+show mana_cut   colour 1.0  1.0  1.0   above 0.3  full 3    alpha 0.5

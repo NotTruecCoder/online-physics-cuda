@@ -1,0 +1,9 @@
+# VERIFICATION: pure conduction, for the order of convergence against the exact solution (bench/verify.py).
+field T init 0 range -1000000 1000000
+
+param k = 0.01
+
+term conduction
+  d T = diffuse(k, T)
+  conserves T
+  max_dt = 0.15 * h * h / k

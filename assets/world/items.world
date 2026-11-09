@@ -1,0 +1,104 @@
+# WHAT THERE IS TO HOLD.
+#   item NAME KIND [key value]... | Label | what it says about itself
+# Kinds: weapon (fights WEAPON of moves.world), food (heal), potion (heal, mana, effect NAME AMOUNT SECONDS), resource,
+#        clothes (slot head|body|legs|feet|back, model NAME in assets/world/clothes, armour, warmth).
+# Effects: speed strength stone regen flow leap.
+# `job` says who gets it, in a town: the q_ names of people.law.
+# What a tool can take from the world is on its weapon, in moves.world. A spell only breaks; only a tool leaves something.
+
+item sword weapon good ore fights sword colour 190 196 210 job guard | Sword | Good for people, poor for wood.
+item spear weapon good ore fights spear colour 170 150 110 job guard | Spear | Keeps them at a distance.
+item axe weapon good ore fights axe colour 150 120 90 job wood | Axe | Fells trees, and it will do in a fight.
+item pickaxe weapon good ore fights pickaxe colour 130 130 140 job ore | Pickaxe | Takes stone out of the ground.
+item stonepick weapon good ore fights pickaxe colour 150 150 150 job stone | Quarry pick | Takes stone out of the ground.
+item sickle weapon good ore fights sword colour 180 170 110 job grain | Sickle | Cuts what grows.
+item staff weapon good wood fights spear colour 120 90 60 job herd | Herder's staff | For sheep, mostly.
+item gaff weapon good ore fights spear colour 110 110 120 job fish | Gaff | For fish, mostly.
+
+item bread food good grain heal 25 colour 196 150 90 job grain | Bread | Eaten at once, mends a little.
+item fish food good fish heal 20 colour 150 170 190 job fish | Dried fish | Salt, and more salt.
+item meat food good herd heal 35 colour 170 80 70 job herd | Roast meat | Mends more than bread.
+item apple food good grain heal 10 colour 200 60 50 | Apple | Better than nothing.
+
+item potion_heal potion good trade heal 70 colour 220 60 70 | Healing potion | Closes wounds.
+item potion_mana potion good trade mana 100 colour 70 110 240 | Mana potion | The hands fill again.
+item potion_speed potion good trade effect speed 0.5 30 colour 90 220 150 | Potion of haste | Half as fast again, for half a minute.
+item potion_strength potion good trade effect strength 0.6 30 colour 230 150 50 | Potion of strength | Blows land harder.
+item potion_stone potion good trade effect stone 80 30 colour 150 150 130 | Stoneskin potion | Much of what lands does not get through.
+item potion_regen potion good trade effect regen 6 25 colour 240 120 180 | Potion of mending | Wounds close by themselves.
+item potion_leap potion good trade effect leap 0.5 30 colour 170 230 240 | Potion of leaping | The ground lets you go.
+
+item coin resource stack 9999 price 1 colour 226 190 80 | Coin | It is worth what they say it is.
+item raw_meat food heal 8 price 3 good herd colour 190 70 70 | Raw meat | Better roasted.
+item hide resource price 6 good herd colour 140 106 76 | Hide | Off something that ran.
+item antler resource price 12 colour 214 200 170 | Antler | Off something that ran fast.
+item tusk resource price 14 colour 230 226 200 | Tusk | Off something that did not run.
+item fang resource price 10 colour 236 232 220 | Fang | Keep your fingers clear of the rest.
+item bear_pelt resource price 40 good herd colour 90 66 46 | Bear pelt | Worth a lot, and for good reason.
+
+item wood resource good wood colour 130 92 56 | Wood | From a tree.
+item fibre resource good grain colour 120 150 70 | Fibre | Leaves and thatch.
+item stone resource good stone colour 140 140 145 | Stone | Out of the ground.
+item soil resource good stone colour 110 80 56 | Soil | It is only dirt.
+item sand resource good stone colour 214 196 140 | Sand | It gets everywhere.
+item clay resource good stone colour 170 110 80 | Clay | Soft until it is fired.
+item gravel resource good stone colour 150 146 138 | Gravel | Small stones.
+item charcoal resource good wood colour 50 48 50 | Charcoal | What fire leaves of wood.
+item ore resource good ore colour 170 120 90 | Ore | There is metal in it.
+
+item linen_shirt clothes good grain slot body model shirt warmth 0 colour 220 212 190 | Linen shirt | Plain and cool.
+item wool_tunic clothes good herd slot body model tunic armour 3 warmth 0.5 colour 130 90 60 | Wool tunic | Warm, and it itches.
+item linen_dress clothes good grain slot body model dress warmth -0.2 colour 190 150 170 | Dress | Falls to the knee.
+item light_robe clothes good grain slot body model robe warmth -1 colour 230 226 210 | Light robe | For the sun.
+item fur_coat clothes good herd slot body model fur_coat armour 6 warmth 1 colour 120 96 76 | Fur coat | For the cold.
+item mage_robe clothes good trade slot body model mage_robe armour 2 colour 50 70 170 | Mage's robe | Blue, with a gold hem.
+item cuirass clothes good ore slot body model cuirass armour 28 colour 160 166 178 job guard | Iron cuirass | It stops most of a blade.
+item trousers clothes good herd slot legs model trousers armour 1 colour 90 80 70 | Trousers | Plain cloth.
+item greaves clothes good ore slot legs model greaves armour 10 colour 150 156 168 job guard | Iron greaves | Heavy on the legs.
+item boots clothes good herd slot feet model boots armour 2 warmth 0.3 colour 80 56 36 | Leather boots | Good for a long road.
+item sandals clothes good herd slot feet model sandals warmth -0.5 colour 170 130 90 | Sandals | Good for hot ground.
+item cloak clothes good herd slot back model cloak warmth 0.3 colour 150 40 46 | Cloak | It keeps the rain off.
+item straw_hat clothes good grain slot head model straw_hat warmth -0.6 colour 210 186 120 job grain | Straw hat | For the fields.
+item fur_hood clothes good herd slot head model fur_hood armour 1 warmth 1 colour 110 90 70 | Fur hood | For the cold.
+item pack clothes slot back model pack good trade colour 130 104 70 | Pack | What a caravan carries it in.
+item wizard_hat clothes good trade slot head model wizard_hat colour 52 40 132 | Pointed hat | Mostly for the look of it.
+item helmet clothes good ore slot head model helmet armour 12 colour 160 166 178 job guard | Iron helmet | You hear less, and live longer.
+
+drop wood wood
+drop leaf fibre
+drop ore ore
+drop granite stone
+drop basalt stone
+drop slate stone
+drop sandstone stone
+drop chalk stone
+drop plaster stone
+drop brick stone
+drop tile stone
+drop soil soil
+drop sand sand
+drop clay clay
+drop gravel gravel
+drop thatch fibre
+drop reed fibre
+drop timber wood
+drop char charcoal
+
+# What comes off a beast that was brought down.
+loot grazer raw_meat 2 hide 1
+loot deer raw_meat 2 hide 1 antler 1
+loot boar raw_meat 3 hide 1 tusk 1
+loot wolf hide 1 fang 2
+loot hunter hide 1 fang 1
+loot bear raw_meat 4 bear_pelt 1
+
+start axe 1
+start pickaxe 1
+start sword 1
+start bread 5
+start potion_heal 2
+start potion_mana 1
+start potion_speed 1
+wear linen_shirt
+wear trousers
+wear boots

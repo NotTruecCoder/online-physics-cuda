@@ -1,0 +1,16 @@
+# A skin for what is held. The grip is at the origin; +x runs along the shaft.
+voxel 0.06
+colour shaft  120 90 56
+colour wrap   62 40 26
+colour point  196 204 214
+colour edge   238 244 250
+colour tassel 170 40 46
+
+part item pivot 0 0 0
+  box -14 0 0  30 0 0  shaft
+  box  -3 0 0   3 0 0  wrap
+  box  31 0 -1 36 0 1  point
+  box  31 0 2  33 0 2  point
+  box  31 0 -2 33 0 -2 point
+  box  37 0 0  40 0 0  edge
+  box  28 0 -3 30 0 -1 tassel

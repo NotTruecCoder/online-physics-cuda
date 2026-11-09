@@ -1,0 +1,22 @@
+{
+  "name": "field-engine",
+  "version-string": "1.0.0",
+  "description": "Dependencies of the field engine sandbox: window, UI, renderer, math.",
+  "dependencies": [
+    "sdl3",
+    {
+      "name": "imgui",
+      "features": [
+        "sdl3-binding",
+        "sdl3-renderer-binding"
+      ]
+    },
+    {
+      "name": "bgfx",
+      "features": [
+        "tools"
+      ]
+    },
+    "glm"
+  ]
+}

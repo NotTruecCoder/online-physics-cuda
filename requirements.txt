@@ -1,0 +1,6 @@
+# tools/lawjax (the JAX twin, parity, trainers) and bench/*.py. CPU JAX is enough; the engine's own CUDA path needs
+# no Python.
+jax==0.5.0
+jaxlib==0.5.0
+optax>=0.2
+numpy>=1.26

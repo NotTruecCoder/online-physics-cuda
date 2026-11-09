@@ -1,0 +1,20 @@
+# A BURNING FRONT: what the learned LOD correction (model 2) is measured on. Heat spreads by conduction; fuel burns
+# where it is hot enough to catch; the burning heats. The front's speed depends on how fine the lattice is: on a
+# lattice twice as coarse the same law runs a front that is too slow and too sharp.
+field T     init 290  range 0 6000 unit K
+field fuel  init 0    range 0 1.01
+
+param k_heat = 1.0     # m2/s: a fast front, a few metres a second
+param ignite = 600     # K: what catches
+param burn   = 2.0     # 1/s
+param heat   = 1400    # K a unit of fuel gives
+param cool   = 0.4     # 1/s: back towards 290
+
+term conduction
+  d T = diffuse(k_heat, T)
+  conserves T
+  max_dt = 0.15 * h * h / k_heat
+
+term combustion
+  d fuel = -burn * fuel * step(T - ignite)
+  d T = heat * burn * fuel * step(T - ignite) - cool * (T - 290)

@@ -1,0 +1,93 @@
+# YOU, IN VOXELS. A figure the same stuff as the world: every cube is a cube, each with its own shade.
+#
+#   voxel SIZE                      metres to a voxel
+#   colour NAME R G B               0-255; a colour named `glow` takes the colour of the spell in hand and is not shaded
+#   part BONE pivot X Y Z           what follows hangs on this bone and turns about this point
+#   box X0 Y0 Z0 X1 Y1 Z1 COLOUR    voxels, both ends included. +x is where you face, +y your left, z 0 under your boots
+#   dot X Y Z COLOUR                one voxel
+#
+#   socket NAME X Y Z               where something held goes: hand_r, hand_l
+#
+# A part is a bone, and what is written under it hangs on it: torso head cape arm_l arm_r leg_l leg_r. How they move is in
+# assets/world/anim, and any clip fits any skin.
+
+voxel 0.07
+
+colour skin    232 186 142
+colour blush   214 150 118
+colour eye      26  24  40
+colour hair     92  58  34
+colour robe     44  66 168
+colour robe2    32  48 128
+colour trim    236 190  72
+colour belt     96  56  28
+colour buckle  244 208  96
+colour boot     62  40  26
+colour trouser  34  34  62
+colour cape    176  36  44
+colour cape2   134  24  36
+colour hat      52  40 132
+colour hat2     38  28 104
+colour band    236 190  72
+colour glow    255 255 255
+
+part leg_l pivot 0 2 7
+  box -1  1 3   1  3 6  trouser
+  box -2  1 0   3  3 2  boot
+part leg_r pivot 0 -2 7
+  box -1 -3 3   1 -1 6  trouser
+  box -2 -3 0   3 -1 2  boot
+
+part torso pivot 0 0 7
+  box -2 -4 7   2  4 7  belt
+  dot  3  0 7  buckle
+  dot  3  1 7  buckle
+  dot  3 -1 7  buckle
+  box -2 -4 8   2  4 14 robe
+  box -2 -4 8  -2  4 14 robe2
+  box  3 -1 8   3  1 14 trim
+  box -3 -5 4   3  5 6  robe
+  box -3 -5 4   3  5 4  trim
+  box -2 -5 13  2 -5 14 robe2
+  box -2  5 13  2  5 14 robe2
+
+part cape pivot -3 0 14
+  box -4 -4 4  -3  4 14 cape
+  box -4 -4 4  -4  4 5  cape2
+  box -4 -3 6  -4 -3 13 cape2
+  box -4  3 6  -4  3 13 cape2
+
+part arm_l pivot 0 6 14
+  box -1  6 8   1  7 14 robe
+  box -1  6 8   1  7 8  trim
+  box -1  6 6   1  7 7  skin
+  box  0  6 5   1  7 5  glow
+  socket hand_l 1 7 6
+
+part arm_r pivot 0 -6 14
+  box -1 -7 8   1 -6 14 robe
+  box -1 -7 8   1 -6 8  trim
+  box -1 -7 6   1 -6 7  skin
+  box  0 -7 5   1 -6 5  glow
+  socket hand_r 1 -7 6
+
+part head pivot 0 0 15
+  box -3 -3 15  3  3 21 skin
+  box -3 -3 19 -3  3 21 hair
+  box -3 -3 15 -3  3 18 hair
+  box -2 -3 20  3 -3 21 hair
+  box -2  3 20  3  3 21 hair
+  dot  4 -2 18 eye
+  dot  4  2 18 eye
+  dot  4 -2 17 eye
+  dot  4  2 17 eye
+  dot  4  0 16 blush
+  # the hat
+  box -5 -5 22  5  5 22 hat2
+  box -3 -3 23  3  3 24 band
+  box -3 -3 25  3  3 26 hat
+  box -2 -2 27  2  2 28 hat
+  box -2 -2 29  1  2 30 hat2
+  box -2 -1 31  0  1 32 hat
+  box -3 -1 33 -2  0 34 hat
+  dot -4  0 34 band

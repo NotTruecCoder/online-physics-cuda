@@ -1,0 +1,96 @@
+# HOW PEOPLE BUILD. One block per style; a culture takes the style that fits the land it began in. This is the
+# surface a model can write to: the engine checks each style when it reads it and refuses one that could not hold
+# a person or a stair, and the gate walks through what comes out. Everything is cells of 0.5 m.
+#
+#   biomes   where this style belongs: ocean beach desert savanna grassland forest jungle taiga tundra snow swamp mountain
+#   wall     stone|wood|leaf MATERIAL     what stone does it stand on the law: wood and leaf burn
+#   roof     gable|hip|flat  stone|wood|leaf MATERIAL
+#   floors   MIN MAX
+#   storey   CELLS, floor included (at least 5: a door is 4 tall)
+#   width    MIN MAX      depth MIN MAX    of a house
+#   base     stone|piles CELLS MATERIAL    what the floor stands on, and how high
+#   windows  EVERY        a window every so many cells, 0 for none
+#   ring     MATERIAL     towns and cities of this people have a wall
+#
+# Materials: granite basalt slate sandstone soil sand clay chalk gravel plaster brick thatch tile timber char reed
+
+style hearth_timber
+  biomes grassland forest
+  wall wood timber
+  roof gable wood thatch
+  floors 1 2
+  storey 6
+  width 13 20
+  depth 12 18
+  base stone 1 granite
+  windows 4
+
+style river_brick
+  biomes savanna grassland beach
+  wall stone brick
+  roof gable stone tile
+  floors 1 3
+  storey 6
+  width 12 19
+  depth 13 20
+  base stone 1 slate
+  windows 3
+  ring brick
+
+style sand_court
+  biomes desert savanna beach
+  wall stone sandstone
+  roof flat stone clay
+  floors 1 2
+  storey 6
+  width 13 22
+  depth 13 22
+  base stone 1 sandstone
+  windows 5
+  ring sandstone
+
+style north_hall
+  biomes taiga tundra snow
+  wall wood timber
+  roof hip wood slate
+  floors 1 1
+  storey 7
+  width 14 24
+  depth 12 16
+  base stone 2 granite
+  windows 0
+
+style fen_watch
+  biomes swamp jungle
+  wall wood reed
+  roof hip leaf thatch
+  floors 1 2
+  storey 6
+  width 12 17
+  depth 13 17
+  base piles 4 timber
+  windows 3
+
+style high_stone
+  biomes mountain tundra taiga forest
+  wall stone granite
+  roof gable stone slate
+  floors 2 3
+  storey 6
+  width 12 17
+  depth 13 18
+  base stone 1 basalt
+  windows 5
+  ring granite
+
+style white_quarter
+  biomes grassland forest jungle beach
+  wall stone plaster
+  roof hip stone tile
+  floors 1 3
+  storey 6
+  width 12 18
+  depth 13 19
+  base stone 1 chalk
+  windows 3
+  ring chalk

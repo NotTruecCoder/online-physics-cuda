@@ -1,0 +1,53 @@
+# WHAT CAN BE POURED: named shapes of something poured into the fields where they are put. Not spells: nothing here costs, waits,
+# flies or moves anyone. What the poured field does next is the law (magic.law, world.law, life.law): a ball of fire mana is a
+# fire only because the law makes turf and wood catch from it. One line each; a new element of the law needs no new code here.
+#
+#   pour NAME  field FIELD  amount A  [also FIELD  also_amount A]  shape SHAPE ...  colour R G B  about The rest of the line.
+#
+# shape: ball    densest at its heart, nothing at its rim (a slope: the slope of force mana is what throws bodies): radius
+#        beam    a line along the way it is put, as long as `range`: radius; `flat 1` runs level and whole (a causeway)
+#        wall    a slab across the way it is put: width, height, thickness
+#        ring    a circle of wall about where it is put: radius, height, thickness
+#        pillar  a column standing where it is put: radius, height
+#        cut     a plane along the way it is put: range long, height high, thickness thin
+
+# --- the elements ------------------------------------------------------------------------------------------------
+pour fire       field mana_fire   amount 24  shape ball  radius 1.1  colour 1.0 0.47 0.16  about Fire mana: so hot it scorches what it touches, and leaves nothing alight to spread.
+pour ice        field mana_ice    amount 3   shape ball  radius 1.6  colour 0.67 0.88 1.0  about Ice mana draws the heat out: water freezes, fire goes out.
+pour earth      field mana_earth  amount 1.2 shape wall  width 4.0  height 2.6  thickness 1.0  colour 0.59 0.45 0.27  about Earth mana sets into stone where there is room: a wall.
+pour force      field mana_force  amount 3   shape ball  radius 1.4  colour 0.9 0.9 1.0  about Force mana breaks stone and wood into rubble, and its slope throws bodies.
+pour water      field mana_water  amount 1.4 shape ball  radius 1.2  colour 0.24 0.47 0.9  about Water mana condenses into water wherever there is room for it.
+pour air        field mana_air    amount 2.5 shape ball  radius 2.2  colour 0.82 0.96 0.9  about Air mana: its slope throws bodies, and breaks nothing.
+pour kindle     field mana_ember  amount 3   shape ball  radius 1.2  colour 1.0 0.72 0.25  about A flame that takes hold: turf, trees and wooden houses go on burning by themselves.
+
+# --- bigger, and in other shapes ---------------------------------------------------------------------------------
+pour fan        field mana_fire   amount 16  shape ball  radius 0.9  colour 1.0 0.55 0.15  about A small ball of fire mana.
+pour fireball   field mana_fire   amount 30  shape ball  radius 2.4  colour 1.0 0.35 0.1  about A great ball of fire mana: what is near it burns.
+pour ray        field mana_fire   amount 14  shape beam  radius 0.7  range 26  colour 1.0 0.7 0.2  about A line of fire mana, 26 m long.
+pour firewall   field mana_fire   amount 12  shape wall  width 7  height 3  thickness 1  colour 1.0 0.42 0.1  about A wall of fire mana.
+pour ring       field mana_fire   amount 12  shape ring  radius 4  thickness 1.2  height 2  colour 1.0 0.5 0.15  about A ring of fire mana.
+pour magma      field mana_earth  amount 1.4 also mana_fire also_amount 40  shape ball  radius 1.6  colour 1.0 0.3 0.05  about Earth and fire mana at once: stone that melts as it sets, lava.
+pour icewall    field mana_water  amount 1.4 also mana_ice also_amount 4  shape wall  width 6  height 3  thickness 1  colour 0.72 0.9 1.0  about Water and ice mana at once: a wall of ice.
+pour flood      field mana_water  amount 2.5 shape ball  radius 3  colour 0.2 0.45 0.95  about A great deal of water at once.
+pour downpour   field mana_water  amount 1   shape ball  radius 1  colour 0.3 0.55 0.95  about A little water: it falls and puts fires out.
+pour geyser     field mana_water  amount 1   also mana_air also_amount 3  shape pillar  radius 1.2  height 7  colour 0.35 0.65 1.0  about Water and air mana in a column: throws what stands there.
+pour boulder    field mana_earth  amount 1.6 shape ball  radius 1  colour 0.5 0.42 0.32  about A ball of earth mana: a rock where it is put.
+pour tower      field mana_earth  amount 1.2 shape pillar  radius 1  height 6  colour 0.62 0.55 0.45  about A column of stone, 6 m high.
+pour bridge     field mana_earth  amount 1.2 shape beam  flat 1  radius 0.8  range 24  colour 0.65 0.58 0.48  about A causeway of stone, level and whole.
+pour quake      field mana_force  amount 1.5 shape ball  radius 5  colour 0.6 0.5 0.35  about Force mana, wide and weak: the ground there breaks into rubble.
+pour sledge     field mana_force  amount 3   shape ball  radius 2.6  colour 0.85 0.85 1.0  about A great ball of force mana: breaks walls, throws whoever is there.
+pour breaker    field mana_force  amount 2.5 shape beam  radius 0.8  range 28  colour 0.92 0.88 1.0  about A line of force mana, straight through.
+pour cut        field mana_cut    amount 3   shape cut  range 18  height 7  thickness 0.8  colour 0.95 0.97 1.0  about A plane that takes what it passes through and leaves nothing: through walls and trunks.
+pour cataclysm  field mana_force  amount 3   also mana_fire also_amount 10  shape ball  radius 30  colour 1.0 0.62 0.3  about Force and fire mana as wide as a town.
+pour shock      field mana_force  amount 1.5 shape ball  radius 4  colour 0.8 0.82 1.0  about Force mana all around: what stands there is thrown away, stone cracks.
+pour repulse    field mana_air    amount 3   shape ball  radius 6  colour 0.85 1.0 0.92  about Air mana, wide: a wind outward. Breaks nothing.
+pour well       field mana_pull   amount 4   shape ball  radius 5  colour 0.55 0.35 0.95  about Pull mana: everything about falls toward its middle.
+pour cyclone    field mana_air    amount 4   shape pillar  radius 2  height 8  colour 0.75 0.95 0.85  about A column of air mana: what stands there goes up.
+pour windwall   field mana_air    amount 4   shape wall  width 8  height 4  thickness 2  colour 0.82 0.97 0.92  about A wall of air mana: hard to cross.
+
+# --- storm and life ----------------------------------------------------------------------------------------------
+pour strike     field mana_storm  amount 6   shape pillar  radius 0.7  height 16  colour 0.75 0.8 1.0  about Storm mana in a column from above: lightning, worse in water.
+pour orb        field mana_storm  amount 8   shape ball  radius 2  colour 0.55 0.65 1.0  about A ball of storm mana: it hurts to stand in.
+pour tempest    field mana_storm  amount 5   shape ball  radius 1.2  colour 0.65 0.7 1.0  about Storm mana, a little.
+pour heal       field mana_life   amount 6   shape ball  radius 2  colour 0.45 1.0 0.5  about Life mana: whoever stands in it mends.
+pour bloom      field mana_life   amount 3   shape ball  radius 3  colour 0.55 0.95 0.35  about Life mana: bodies mend, and turf grows at once.

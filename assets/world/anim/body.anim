@@ -1,0 +1,215 @@
+# HOW A BODY MOVES, WITH NO BODY IN IT. These files turn bones; a skin (assets/world/skins) says what hangs on them. Any
+# clip fits any skin, and the sizes do not matter: there is nothing here but angles.
+#
+#   clip NAME [cycle]                 one that loops runs from 0 to 1
+#   key TIME BONE SWING[,OUT[,TWIST]] ...
+#
+# Bones: root torso head cape arm_l arm_r leg_l leg_r, and `grip`, how what is held turns in the hand. Radians. Swing > 0 is forward, out is away from the body, twist turns
+# it to its left. `root` is all of it, about the feet: swing leans, out tips it over. `lift` is not a bone: it raises
+# everything above the legs, in heights of the figure.
+# A bone a clip does not name is left as it was, so a clip of the arms plays over legs that run.
+# A move's clip runs by its parts, whatever they take: from 0 to 1 the windup, to 2 the blow, to 3 the recovery.
+# `frames`: a key holds until the next, as frames of pixel art do. Without it they ease into each other.
+
+frames
+
+# A playing piece: it has no legs to walk on. It rocks from side to side, and hands hang in the air by themselves.
+still leg_l leg_r
+
+clip idle cycle
+key 0    arm_l 0.3,0.32   arm_r 0.3,0.32   lift 0
+key 0.5  arm_l 0.34,0.32  arm_r 0.34,0.32  lift 0.012
+
+clip run cycle
+key 0    root 0.06,0.13   arm_l 0.05,0.3  arm_r 0.55,0.3  lift 0
+key 0.25 root 0.06,0      arm_l 0.3,0.3   arm_r 0.3,0.3   lift 0.05
+key 0.5  root 0.06,-0.13  arm_l 0.55,0.3  arm_r 0.05,0.3  lift 0
+key 0.75 root 0.06,0      arm_l 0.3,0.3   arm_r 0.3,0.3   lift 0.05
+
+clip beast_air
+key 0    root -0.2
+
+# A beast goes at you with all of itself: back, and then forward.
+clip beast_lunge
+key 0    root -0.12
+key 1    root -0.38  lift 0.03
+key 1.3  root 0.5    lift 0.04
+key 2    root 0.42
+key 3    root 0
+
+clip beast_rear
+key 0    root -0.3
+key 1    root -0.85  lift 0.1
+key 1.3  root 0.55
+key 2    root 0.45
+key 3    root 0
+
+clip rising
+key 0  root 0.1  leg_l 0.95  leg_r -0.35  arm_l -0.5,0.45  arm_r 0.9,0.3
+
+clip falling
+key 0  root 0.1  leg_l 0.4   leg_r -0.25  arm_l 0.35,1.05  arm_r 0.35,1.05
+
+clip gliding
+key 0  root 0.55  leg_l -0.25  leg_r -0.4  arm_l 0,1.45  arm_r 0,1.45
+
+clip dashing
+key 0  root 0.75  leg_l 0.9  leg_r -0.75  arm_l -1.2,0.2  arm_r -1.0,0.2
+
+# A spell leaves the hand.
+clip cast_r
+key 0  arm_r 1.6,0  root -0.12
+clip cast_l
+key 0  arm_l 1.6,0  root -0.12
+
+# A raised guard.
+clip guard
+key 0  arm_r 1.5,0.15,0.7  arm_l 1.5,0.15,-0.7  torso 0,0,0.1  root 0.08  head 0.1
+
+# ---- fists ----
+clip jab
+key 0  arm_r 0.8,0.1  torso 0,0,0.3
+key 1  arm_r 0.1,0.3  torso 0,0,0.8  root -0.22
+key 1.5 arm_r 1.75,0  torso 0,0,-0.7  root 0.32
+key 2  arm_r 1.7,0    torso 0,0,-0.7  root 0.32
+key 3  arm_r 0.1,0.08 torso 0,0,0     root 0
+
+clip hook
+key 0  arm_l 0.6,0.5   torso 0,0,-0.2
+key 1  arm_l 0.9,1.5   torso 0,0,-1.1  root -0.2
+key 1.5 arm_l 1.5,0.5  torso 0,0,0.4  root 0.3
+key 2  arm_l 1.2,0.1   torso 0,0,1.1  root 0.3
+key 3  arm_l 0.1,0.08  torso 0,0,0    root 0
+
+clip kick
+key 0  leg_r 0.2   root -0.05
+key 1  leg_r 0.95  root -0.2  arm_l -0.4,0.5  arm_r 0.3,0.5
+key 1.5 leg_r 1.5  root -0.34
+key 2  leg_r 1.4   root -0.3
+key 3  leg_r 0     root 0     arm_l 0,0.08  arm_r 0,0.08
+
+# ---- how each thing is carried: over the legs, with nothing else going on ----
+clip hold_sword
+key 0  arm_r 0.75,0.25,0.1
+clip hold_pickaxe
+key 0  arm_r 0.55,0.2,0.1  arm_l 0.9,0.1,-0.7
+
+clip hold_axe
+key 0  arm_r 0.7,0.2,0.1  arm_l 0.9,0.1,-0.7  grip 0.6
+
+clip hold_spear
+key 0  arm_r 0.9,0.15  arm_l 1.2,0.05  grip -0.75
+
+# ---- blades, from the right hand ----
+clip slash
+key 0   arm_r 1.5,0.9,0.7     torso 0,0,0.5   leg_l 0.2   leg_r -0.15
+key 1   arm_r 1.8,1.6,1.5     torso 0,0,1.5   root -0.28
+key 1.5 arm_r 1.6,0.2,0       torso 0,0,0     root 0.42
+key 2   arm_r 1.3,1.0,-1.6    torso 0,0,-1.5  root 0.42
+key 3   arm_r 0.75,0.25,0.1   torso 0,0,0     root 0      leg_l 0     leg_r 0
+
+clip thrust
+key 0   arm_r 0.9,0.1         torso 0,0,0.6
+key 1   arm_r 0.1,0.1         torso 0,0,1.2    root -0.32
+key 1.4 arm_r 1.65,0          torso 0,0,-0.8   root 0.55
+key 2   arm_r 1.6,0           torso 0,0,-0.8   root 0.55
+key 3   arm_r 0.75,0.25,0.1   torso 0,0,0      root 0      leg_l 0     leg_r 0
+
+clip overhead
+key 0   arm_r 2.2,0.1   arm_l 2.2,0.1   torso -0.2
+key 1   arm_r 3.2,0.05  arm_l 3.2,0.05  torso -0.5   root -0.5
+key 1.4 arm_r 1.5,0.05  arm_l 1.5,0.05  torso 0.4    root 0.5
+key 2   arm_r 0.55,0.05 arm_l 0.55,0.05 torso 0.6    root 0.7
+key 3   arm_r 0.75,0.25 arm_l 0.1,0.08  torso 0      root 0      leg_l 0    leg_r 0
+
+clip rising_cut
+key 0   arm_r -0.3,0.3    torso 0,0,0.3   root 0.14
+key 1   arm_r -0.9,0.4    torso 0,0,0.6   root 0.3   leg_l 0.6  leg_r -0.5
+key 1.5 arm_r 1.4,0.2     torso -0.1,0,0  root 0     leg_l 0.3  leg_r -0.2
+key 2   arm_r 3.0,0.1     torso -0.3,0,-0.4  root -0.24  leg_l -0.1  leg_r 0.1
+key 3   arm_r 0.75,0.25,0.1  torso 0,0,0  root 0     leg_l 0    leg_r 0
+
+clip sweep
+key 0   arm_r 1.3,0.5,0.8    arm_l 1.3,0.2,0.8    torso 0,0,0.7
+key 1   arm_r 1.4,1.2,1.5    arm_l 1.4,0.2,1.5    torso 0,0,1.7   root -0.3
+key 1.5 arm_r 1.5,0.2,0      arm_l 1.5,0.2,0      torso 0,0,0     root 0.2   leg_l 0.6  leg_r -0.5
+key 2   arm_r 1.4,0.2,-1.3   arm_l 1.4,0.9,-1.3   torso 0,0,-1.3  root 0.22  leg_l 0.7  leg_r -0.6
+key 3   arm_r 0.75,0.25,0.1  arm_l 0.1,0.08,0     torso 0,0,0     root 0     leg_l 0    leg_r 0
+
+# ---- the spear, both hands ----
+clip poke
+key 0   arm_r 0.8,0.05  arm_l 1.1,-0.1   grip -0.8   torso 0,0,0.3
+key 1   arm_r 0.3,0.05  arm_l 0.7,-0.1   grip -0.3   torso 0,0,0.6   root -0.15
+key 1.2 arm_r 1.5,0     arm_l 1.55,-0.1  grip -1.5   torso 0,0,-0.4  root 0.3
+key 2   arm_r 1.55,0    arm_l 1.55,-0.1  grip -1.55  torso 0,0,-0.5  root 0.32
+key 3   arm_r 0.9,0.15  arm_l 1.2,0.05   grip -0.75  torso 0,0,0     root 0
+
+clip lunge
+key 0   arm_r 0.7,0.05  arm_l 1.0,-0.1   grip -0.7   torso 0,0,0.5   root -0.1
+key 1   arm_r 0.1,0.05  arm_l 0.5,-0.1   grip -0.1   torso 0,0,0.95  root -0.36
+key 1.3 arm_r 1.55,0    arm_l 1.6,-0.1   grip -1.55  torso 0,0,-0.5  root 0.55
+key 2   arm_r 1.6,0     arm_l 1.6,-0.1   grip -1.6   torso 0,0,-0.6  root 0.6
+key 3   arm_r 0.9,0.15  arm_l 1.2,0.05   grip -0.75  torso 0,0,0     root 0
+
+# ---- the great blows. `root` twist turns all of it about the feet: the blade is only the end of the body.
+# Half round: it turns its back on you, and comes all the way through.
+clip half_turn
+key 0    root -0.1,0,0.5    arm_r 1.6,1.2,1.2   torso 0,0,0.7
+key 0.5  root -0.25,0,1.3   arm_r 1.7,1.5,1.5   torso 0,0,1.2
+key 0.85 root -0.32,0,1.9   arm_r 1.7,1.6,1.6   torso 0,0,1.4
+key 1    root 0.2,0,1.3     arm_r 1.6,1.0,0.6   torso 0,0,0.6
+key 1.3  root 0.42,0,0.2    arm_r 1.6,0.3,0     torso 0,0,0
+key 1.6  root 0.5,0,-1.0    arm_r 1.5,0.8,-0.8  torso 0,0,-0.7
+key 2    root 0.5,0,-2.0    arm_r 1.4,1.1,-1.4  torso 0,0,-1.2
+key 2.5  root 0.25,0,-2.0   arm_r 1.1,0.6,-0.5  torso 0,0,-0.5
+key 3    root 0,0,0         arm_r 0.75,0.25,0.1 torso 0,0,0
+
+# Round and round: it leans a little, takes it in both hands, and gets going, and you can walk with it.
+clip wind_up
+key 0.00 root -0.05,0,0 arm_r 1.0,-0.2 arm_l 1.0,-0.2 grip -0.8
+key 0.50 root -0.14,0,-0.8 arm_r 1.15,-0.3 arm_l 1.15,-0.3 grip -1.0
+key 0.80 root -0.16,0,-1.6 arm_r 1.2,-0.32 arm_l 1.2,-0.32 grip -1.1
+key 1.000 root -0.2,0,-2.36 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.031 root -0.2,0,-3.15 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.062 root -0.2,0,-3.93 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.094 root -0.2,0,-4.71 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.125 root -0.2,0,-5.50 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.156 root -0.2,0,-6.29 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.188 root -0.2,0,-7.07 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.219 root -0.2,0,-7.86 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.250 root -0.2,0,-8.64 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.281 root -0.2,0,-9.43 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.312 root -0.2,0,-10.21 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.344 root -0.2,0,-10.99 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.375 root -0.2,0,-11.78 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.406 root -0.2,0,-12.56 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.438 root -0.2,0,-13.35 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.469 root -0.2,0,-14.13 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.500 root -0.2,0,-14.92 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.531 root -0.2,0,-15.71 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.562 root -0.2,0,-16.49 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.594 root -0.2,0,-17.28 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.625 root -0.2,0,-18.06 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.656 root -0.2,0,-18.84 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.688 root -0.2,0,-19.63 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.719 root -0.2,0,-20.41 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.750 root -0.2,0,-21.20 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.781 root -0.2,0,-21.98 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.812 root -0.2,0,-22.77 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.844 root -0.2,0,-23.55 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.875 root -0.2,0,-24.34 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.906 root -0.2,0,-25.12 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.938 root -0.2,0,-25.91 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 1.969 root -0.2,0,-26.70 arm_r 1.25,-0.32 arm_l 1.25,-0.32 grip -1.15
+key 2    root -0.1,0,-27.5 arm_r 1.1,-0.2 arm_l 1.1,-0.2 grip -0.9
+key 2.5  root -0.05,0,-27.5 arm_r 0.9,0.1 arm_l 0.9,0.1 grip 0
+key 3    root 0,0,-27.5 arm_r 0.7,0.2,0.1 arm_l 0.9,0.1,-0.7 grip 0.6
+
+# A ram with a spear in front of it: back on its heels, and then all of it, point first, through whatever is there.
+clip charge
+key 0    root -0.2      arm_r 0.6,0.05  arm_l 0.9,-0.1   grip -0.6   torso 0,0,0.6
+key 0.6  root -0.42     arm_r 0.1,0.05  arm_l 0.5,-0.1   grip -0.1   torso 0,0,0.95  lift 0.02
+key 1    root 0.62      arm_r 1.6,0     arm_l 1.6,-0.1   grip -1.6   torso 0,0,-0.4  lift 0.05
+key 2    root 0.7       arm_r 1.6,0     arm_l 1.6,-0.1   grip -1.6   torso 0,0,-0.4  lift 0.05
+key 2.5  root 0.35      arm_r 1.3,0.05  arm_l 1.4,0      grip -1.2   torso 0,0,-0.2
+key 3    root 0         arm_r 0.9,0.15  arm_l 1.2,0.05   grip -0.75  torso 0,0,0

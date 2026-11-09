@@ -1,0 +1,15 @@
+# A pick.
+voxel 0.07
+colour wrap 92 62 38
+colour haft 130 92 56
+colour head 120 124 134
+colour edge 200 206 216
+
+part item pivot 0 0 0
+  box -5 0 0 1 0 0 wrap
+  box 2 0 0 17 0 0 haft
+  box 15 -1 0 17 1 1 head
+  box 16 0 2 17 0 6 head
+  box 16 0 -5 17 0 -1 head
+  box 16 0 7 17 0 8 edge
+  box 16 0 -7 17 0 -6 edge

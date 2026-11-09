@@ -1,0 +1,6 @@
+# The same front on a lattice twice as coarse.
+grid 128 8 1 1.0
+law assets/law/bench/front.law
+fill fuel 0.85
+noise fuel 0.15 3
+box T 1500 0 0 0 3 8 1

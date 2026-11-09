@@ -1,0 +1,374 @@
+{
+ "results": {
+  "plain": {
+   "100": {
+    "rmse": 128.37430602788925,
+    "front_err": -59.0,
+    "finite": true,
+    "total_T_start": 316320.0
+   },
+   "101": {
+    "rmse": 154.89234106699627,
+    "front_err": -21.0,
+    "finite": true,
+    "total_T_start": 335680.0
+   },
+   "102": {
+    "rmse": 10.894928688883082,
+    "front_err": 0.0,
+    "finite": true,
+    "total_T_start": 335680.0
+   },
+   "103": {
+    "rmse": 84.7571357870102,
+    "front_err": -42.25,
+    "finite": true,
+    "total_T_start": 316320.0
+   },
+   "104": {
+    "rmse": 128.46264935413996,
+    "front_err": -59.0,
+    "finite": true,
+    "total_T_start": 316320.0
+   },
+   "105": {
+    "rmse": 115.35794572114945,
+    "front_err": -54.0,
+    "finite": true,
+    "total_T_start": 316320.0
+   },
+   "sparse fuel": {
+    "rmse": 2.233156065614967,
+    "front_err": 0.0,
+    "finite": true,
+    "total_T_start": 326000.0
+   },
+   "full uniform load": {
+    "rmse": 159.7196496216456,
+    "front_err": -14.0,
+    "finite": true,
+    "total_T_start": 326000.0
+   }
+  },
+  "calibrated": {
+   "100": {
+    "rmse": 140.3018111463388,
+    "front_err": 10.0,
+    "finite": true,
+    "total_T_start": 316320.0
+   },
+   "101": {
+    "rmse": 139.13524690389633,
+    "front_err": 8.0,
+    "finite": true,
+    "total_T_start": 335680.0
+   },
+   "102": {
+    "rmse": 12.990942373421664,
+    "front_err": 0.0,
+    "finite": true,
+    "total_T_start": 335680.0
+   },
+   "103": {
+    "rmse": 86.13963850696882,
+    "front_err": 6.75,
+    "finite": true,
+    "total_T_start": 316320.0
+   },
+   "104": {
+    "rmse": 139.88794831891855,
+    "front_err": 10.0,
+    "finite": true,
+    "total_T_start": 316320.0
+   },
+   "105": {
+    "rmse": 121.5498824340105,
+    "front_err": 8.0,
+    "finite": true,
+    "total_T_start": 316320.0
+   },
+   "sparse fuel": {
+    "rmse": 3.612453037878731,
+    "front_err": 0.0,
+    "finite": true,
+    "total_T_start": 326000.0
+   },
+   "full uniform load": {
+    "rmse": 187.66598955452443,
+    "front_err": 15.0,
+    "finite": true,
+    "total_T_start": 326000.0
+   }
+  },
+  "learned": {
+   "0": {
+    "100": {
+     "rmse": 18.361305043697357,
+     "front_err": -1.0,
+     "finite": true,
+     "total_T_start": 316320.0
+    },
+    "101": {
+     "rmse": 25.650872126022975,
+     "front_err": -1.0,
+     "finite": true,
+     "total_T_start": 335680.0
+    },
+    "102": {
+     "rmse": 8.452876995404562,
+     "front_err": 0.0,
+     "finite": true,
+     "total_T_start": 335680.0
+    },
+    "103": {
+     "rmse": 34.91235673666,
+     "front_err": 1.75,
+     "finite": true,
+     "total_T_start": 316320.0
+    },
+    "104": {
+     "rmse": 17.492430818478265,
+     "front_err": -1.0,
+     "finite": true,
+     "total_T_start": 316320.0
+    },
+    "105": {
+     "rmse": 19.937570779720943,
+     "front_err": 0.0,
+     "finite": true,
+     "total_T_start": 316320.0
+    },
+    "sparse fuel": {
+     "rmse": 3.8490726109345754,
+     "front_err": 0.0,
+     "finite": true,
+     "total_T_start": 326000.0
+    },
+    "full uniform load": {
+     "rmse": 8.027995892365773,
+     "front_err": 0.0,
+     "finite": true,
+     "total_T_start": 326000.0
+    }
+   },
+   "1": {
+    "100": {
+     "rmse": 36.523358519872026,
+     "front_err": -1.0,
+     "finite": true,
+     "total_T_start": 316320.0
+    },
+    "101": {
+     "rmse": 48.688698185284935,
+     "front_err": -2.0,
+     "finite": true,
+     "total_T_start": 335680.0
+    },
+    "102": {
+     "rmse": 61.24387172142664,
+     "front_err": 37.0,
+     "finite": true,
+     "total_T_start": 335680.0
+    },
+    "103": {
+     "rmse": 17.756079887946445,
+     "front_err": 0.75,
+     "finite": true,
+     "total_T_start": 316320.0
+    },
+    "104": {
+     "rmse": 38.381031304597855,
+     "front_err": -2.0,
+     "finite": true,
+     "total_T_start": 316320.0
+    },
+    "105": {
+     "rmse": 9.127032024860382,
+     "front_err": -1.0,
+     "finite": true,
+     "total_T_start": 316320.0
+    },
+    "sparse fuel": {
+     "rmse": 3.729782213171323,
+     "front_err": 0.0,
+     "finite": true,
+     "total_T_start": 326000.0
+    },
+    "full uniform load": {
+     "rmse": 13.169589604536693,
+     "front_err": 0.0,
+     "finite": true,
+     "total_T_start": 326000.0
+    }
+   },
+   "2": {
+    "100": {
+     "rmse": 36.912798558076226,
+     "front_err": -1.25,
+     "finite": true,
+     "total_T_start": 316320.0
+    },
+    "101": {
+     "rmse": 52.840544347763064,
+     "front_err": -2.0,
+     "finite": true,
+     "total_T_start": 335680.0
+    },
+    "102": {
+     "rmse": 4.876602662404379,
+     "front_err": 0.0,
+     "finite": true,
+     "total_T_start": 335680.0
+    },
+    "103": {
+     "rmse": 25.592833052873612,
+     "front_err": 1.75,
+     "finite": true,
+     "total_T_start": 316320.0
+    },
+    "104": {
+     "rmse": 38.69977551062902,
+     "front_err": -2.0,
+     "finite": true,
+     "total_T_start": 316320.0
+    },
+    "105": {
+     "rmse": 8.454231402873994,
+     "front_err": 0.0,
+     "finite": true,
+     "total_T_start": 316320.0
+    },
+    "sparse fuel": {
+     "rmse": 5.855448825359344,
+     "front_err": 0.0,
+     "finite": true,
+     "total_T_start": 326000.0
+    },
+    "full uniform load": {
+     "rmse": 13.675896014372508,
+     "front_err": 0.0,
+     "finite": true,
+     "total_T_start": 326000.0
+    }
+   }
+  }
+ },
+ "fitted": {
+  "k_heat": 1.6137172375748101,
+  "ignite": 600.0,
+  "burn": 1.75590889265892,
+  "heat": 1567.7188194891871,
+  "cool": 0.3478623190511735
+ },
+ "cost": {
+  "fine": {
+   "card_ms": 1.327674506,
+   "step_ms": 9.402,
+   "substeps": [
+    2,
+    1
+   ],
+   "cells": 4194304
+  },
+  "coarse plain": {
+   "card_ms": 0.3253129141,
+   "step_ms": 2.771,
+   "substeps": [
+    1,
+    1
+   ],
+   "cells": 1048576
+  },
+  "coarse + learned flux": {
+   "card_ms": 2.4392146103,
+   "step_ms": 4.5548,
+   "substeps": [
+    1,
+    1,
+    1
+   ],
+   "cells": 1048576
+  }
+ },
+ "train": [
+  0,
+  1,
+  2,
+  3,
+  4,
+  5
+ ],
+ "test": [
+  100,
+  101,
+  102,
+  103,
+  104,
+  105
+ ],
+ "ood": {
+  "sparse fuel": {
+   "fuel": 0.45,
+   "amp": 0.35,
+   "pattern": 901,
+   "width": 6
+  },
+  "full uniform load": {
+   "fuel": 1.0,
+   "amp": 0.0,
+   "pattern": 902,
+   "width": 6
+  }
+ },
+ "iterations": 400,
+ "summary_test": {
+  "plain": {
+   "rmse": [
+    128.37430602788925,
+    154.89234106699627,
+    10.894928688883082,
+    84.7571357870102,
+    128.46264935413996,
+    115.35794572114945
+   ],
+   "front": [
+    59.0,
+    21.0,
+    0.0,
+    42.25,
+    59.0,
+    54.0
+   ]
+  },
+  "calibrated": {
+   "rmse": [
+    140.3018111463388,
+    139.13524690389633,
+    12.990942373421664,
+    86.13963850696882,
+    139.88794831891855,
+    121.5498824340105
+   ],
+   "front": [
+    10.0,
+    8.0,
+    0.0,
+    6.75,
+    10.0,
+    8.0
+   ]
+  },
+  "learned": {
+   "rmse_seed_means": [
+    20.801235416664017,
+    35.286678607331375,
+    27.896130922436715
+   ],
+   "front_seed_means": [
+    0.7916666666666666,
+    7.291666666666667,
+    1.1666666666666667
+   ]
+  }
+ }
+}

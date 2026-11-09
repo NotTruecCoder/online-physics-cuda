@@ -1,0 +1,11 @@
+# The live window's size (9 x 9 chunks of 16, 3 layers): what the sandbox runs, for the benchmark.
+grid 144 144 48 0.5
+law assets/law/world.law
+law assets/law/magic.law
+fill T 290
+box solid 1 0 0 0 144 144 16
+box fuel 1 20 20 16 120 120 18
+box wood 1 60 60 16 64 64 30
+ball T 1400 70 70 18 4
+box water 1 100 10 16 130 40 22
+ball mana_fire 4 40 100 20 3

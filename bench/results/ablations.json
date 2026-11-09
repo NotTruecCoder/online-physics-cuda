@@ -1,0 +1,43 @@
+{
+ "flux / full: flux form, antisymmetric, limited": {
+  "total_drift": 6.36431887221697e-08,
+  "draws_out_of_range": 0,
+  "mirror_error_K": 0.0001220703125
+ },
+ "flux / no limiter": {
+  "total_drift": 1.7006257868754547e-07,
+  "draws_out_of_range": 13,
+  "mirror_error_K": 0.0001220703125
+ },
+ "flux / no antisymmetry": {
+  "total_drift": 5.410369278442407e-07,
+  "draws_out_of_range": 0,
+  "mirror_error_K": 142.33807373046875
+ },
+ "flux / no flux form (learned source per cell)": {
+  "total_drift": 158.19268136799533,
+  "draws_out_of_range": 14,
+  "mirror_error_K": 94.766357421875
+ },
+ "ldiffuse / full: flux form, antisymmetric, mean removed": {
+  "total_drift": 4.587562208345486e-06,
+  "uniform_drift_K": 0.0,
+  "mirror_error_K": 0.0,
+  "offset_error_K": 0.0006103515625,
+  "peak_abs_T": 3420262.25
+ },
+ "ldiffuse / no mean removal": {
+  "total_drift": 0.0024123486735776636,
+  "uniform_drift_K": 0.0,
+  "mirror_error_K": 0.0,
+  "offset_error_K": 926.0873413085938,
+  "peak_abs_T": 10175292416.0
+ },
+ "ldiffuse / no antisymmetry": {
+  "total_drift": 1.5488158432369554e-06,
+  "uniform_drift_K": 821.335205078125,
+  "mirror_error_K": 43.3441162109375,
+  "offset_error_K": 0.0006103515625,
+  "peak_abs_T": 6495764.0
+ }
+}

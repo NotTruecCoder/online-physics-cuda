@@ -1,0 +1,184 @@
+# WHAT PEOPLE SAY. No sentence is decided here, only how a number comes out in words. A line is `TOPIC words`; of several
+# with one topic, who is speaking picks one by who it is. In the words: {town} {name} {job} {you} {fact} {good} {other} {count}.
+
+syllable ka to ren mi lo sa ve dor an ul ith ma bre fen go ra ti wen hal or el su nor ja bo ly ser cad im ost
+
+# A good, by the name of its q_ state: what it is to do it, what it is to have it dear.
+job grain farmer
+job fish fisher
+job herd herder
+job wood woodcutter
+job stone quarryman
+job ore miner
+job guard watchman
+job trade trader
+good grain grain
+good fish fish
+good herd meat and wool
+good wood timber
+good stone stone
+good ore ore
+good guard a safe road
+good trade goods from elsewhere
+
+# What happened, by the event's name in people.law.
+event hunger There is hunger in {town}.
+event plenty {town} has had a good year, and it shows.
+event rising The people of {town} have risen against those who ruled them.
+event split {town} has fallen into camps that no longer listen to each other.
+event healed The quarrels of {town} have died down.
+event feared In {town} they speak of a stranger with fear.
+event loved In {town} they speak well of a stranger.
+
+# What happens among them, and stays there unless someone tells it. {name} {other} {town}.
+local theft In {town}, {name} has stolen {other} and is running for it.
+local brawl In {town}, {name} and {other} have come to blows.
+local brawl_end {name} has got the better of {other} in the street.
+local beast_came A {other} has come in at the edge of {town}, and it is after {name}.
+local killed_by {other} has killed {name} of {town}.
+local killed_by_beast Something has killed {name} of {town}.
+local said A stranger in {town} said: "{other}"
+
+event dear_grain Grain is dear in {town}.
+event cheap_grain Grain is cheap in {town}.
+event dear_fish Fish is dear in {town}.
+event cheap_fish Fish is cheap in {town}.
+event dear_herd Meat and wool is dear in {town}.
+event cheap_herd Meat and wool is cheap in {town}.
+event dear_wood Timber is dear in {town}.
+event cheap_wood Timber is cheap in {town}.
+event dear_stone Stone is dear in {town}.
+event cheap_stone Stone is cheap in {town}.
+event dear_ore Ore is dear in {town}.
+event cheap_ore Ore is cheap in {town}.
+
+# What you did.
+deed struck A stranger struck {name} in {town}.
+deed killed A stranger killed {name} of {town}.
+deed killed_many A stranger has killed {count} people in {town}.
+deed defended A stranger killed {name} of {town}, who came at them first.
+deed beast A stranger killed a {other} near {town}.
+deed threat A stranger threatened {name} in {town}.
+deed kind A stranger was kind to {name} in {town}.
+deed caravan_lost A caravan of {town} never reached the end of its road.
+deed caught A stranger stopped {name}, the thief of {town}.
+
+# Saying what they know.
+heard I heard that: {fact}
+heard They say: {fact}
+heard {fact} That is what people here say, anyway.
+heard A trader told me: {fact}
+no_news Nothing I have heard of. Quiet, for now.
+no_news You know as much as I do.
+saw I saw it with my own eyes: {fact}
+
+# Who they are.
+who I am {name}, a {job} here in {town}.
+who {name}. I work as a {job}, as my house has done.
+who Name's {name}. I am a {job}. What of it?
+trait_bold I do not frighten easily.
+trait_timid I keep out of trouble.
+trait_temper People say I am quick to anger.
+trait_calm It takes a lot to make me angry.
+trait_kind Ask anyone here, I will help if I can.
+trait_hard I look after my own, and that is all.
+
+# How things are: each by a number of the town's.
+food_low There is not enough to eat in {town}.
+food_ok We have enough to eat.
+food_rich We have more than enough, this year.
+unrest_high People here will not stand much more of this.
+unrest_mid There is grumbling, but there always is.
+unrest_low It is peaceful in {town}.
+camps_one People here mostly think alike.
+camps_many There are {count} camps here, and they do not listen to each other.
+camp_side I hold with the first of them.
+camp_side_2 I hold with the second of them.
+camp_side_n I hold with one of the others.
+dear {good} is dear here. A {job} does well out of it.
+cheap {good} is cheap here. Nobody gets rich on it.
+road The road goes on to {other}.
+
+# What they think of you, from -1 to 1.
+think_hate You. I know what you are. Get out of my sight.
+think_dislike I have heard things about you. I will not say I like them.
+think_none You are nobody to me yet, stranger.
+think_like People speak well of you here.
+think_love You are welcome in my house, friend.
+because What I know of you: {fact}
+
+# Said over the world.
+greet_hate Keep away from me.
+greet_dislike Hmm.
+greet_none Good day.
+greet_like Well met, stranger!
+greet_love It's you! Good to see you.
+afraid Help! Somebody!
+afraid Please, no!
+afraid Run!
+angry You will pay for that!
+angry Enough!
+angry I have had enough of you!
+call_watch To me! Stop that one!
+call_watch Watch! Over here!
+saw_blood Murder!
+saw_blood Did you see that?!
+chat Did you hear? {fact}
+chat They say: {fact}
+chat_small The price of {good}, have you seen it?
+chat_small Good weather for it.
+chat_small Who is that stranger?
+threat_back You would not dare.
+threat_scared Please. I want no trouble.
+flatter_back That is kind of you.
+flatter_cold Save your words.
+told_new Is that so? I had not heard. I will tell the others.
+told_old So I have heard.
+refuse I have nothing to say to you.
+
+# What they have on them.
+carry I have {fact} on me. Why do you ask?
+carry_none Nothing worth your while.
+
+# Words of yours they can tell apart: everything else they only remember. `word LIST word word ...`
+word insult fool idiot coward scum stupid ugly liar pig dog rat worm
+word praise thanks thank friend good kind brave wise beautiful well
+word threat kill die burn hurt destroy murder slay
+word greet hello hi greetings hey morning evening
+word memory remember said told recall
+word news news rumour rumours heard happened happening
+word who who name yourself
+word things town food prices price peace how
+word opinion think opinion me
+word carry carry carrying pockets bag
+word common the and that this with have from they said them what has for are was not you your
+said_again You said that before.
+said_again So you keep saying.
+not_understood I do not know what you mean, but I will not forget you said it.
+not_understood Hm.
+not_understood Is that so.
+insulted_back Say that again.
+insulted_back Watch your mouth.
+insulted_timid There is no need for that.
+person_known {other}? A {good}, here. I know them.
+person_bad {other}? I have no good word for them.
+not_heard I have heard nothing of that.
+remember_said You told me: "{fact}"
+remember_said I remember you said: "{fact}"
+remember_nothing You have told me nothing yet.
+robbed Thief! Stop that one!
+brawl_start I have had enough of you, {other}!
+thanks Here, {count} coins. It is the least I can do.
+thanks Take these {count} coins, you have earned them.
+no_coins I have not got that much on me.
+word good_grain grain wheat bread
+word good_fish fish
+word good_herd meat wool hide
+word good_wood wood timber
+word good_stone stone
+word good_ore ore iron metal
+word dear dear expensive scarce
+word cheap cheap plenty
+news_arrived A caravan has come into {town} with {good}.
+news_arrived_empty A caravan has come into {town}, looking for something to buy.
+news_left A caravan is leaving {town} for {other}, with {good}.

@@ -1,0 +1,12 @@
+voxel 0.07
+colour c 52 40 132
+colour d 38 28 104
+colour g 236 190 72
+part head pivot 0 0 19
+  box -6 -6 26 6 6 26 d
+  box -4 -4 27 4 4 29 c
+  box -4 -4 27 4 4 27 g
+  box -3 -3 30 3 3 32 c
+  box -3 -2 33 2 2 35 c
+  box -3 -1 36 1 1 37 d
+  box -4 -1 38 -1 0 39 d
