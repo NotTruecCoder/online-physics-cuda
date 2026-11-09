@@ -4,12 +4,23 @@
 language, structure-preserving and run under runtime contracts. Every learned model is evaluated against classical
 baselines on data it was not trained on.**
 
-C++20, ~42k lines (engine 27k, of which the language, reference solver, IR, CUDA backend, nets and world model 9k;
-benchmarks and tools 2.7k), no CUDA SDK needed to build (the
-driver API and NVRTC are loaded at run time), a differentiable JAX twin of every IR instruction, a reproducible
-benchmark suite (`bench/`).
+![A town under the law: a flood, balls of stone, wood and ice in flight, fire mana, townspeople gossiping](docs/sandbox_town.png)
 
-![A town in the sandbox: people about their work, balls of stone, wood and ice, a flood of water](docs/sandbox_town.png)
+## At a glance
+
+- **Stack:** C++20, CUDA through the driver API + NVRTC loaded at run time (no CUDA SDK to build), inline PTX tensor
+  cores (`mma.m16n8k16`), OpenMP CPU reference, JAX twin (`jax.grad` through the solver), bgfx/SDL3 sandbox.
+- **Compiler:** law text → SSA IR (CSE, folding, stencil radii, cost-model staging, in-place fusion) → one CUDA unit.
+  Bit-identical to a handwritten kernel, 1e-7 against the CPU and JAX references, second-order where the scheme is.
+- **Determinism:** no float atomics, fixed-order compensated reductions; two runs on one card agree to the bit.
+- **Learned operators:** conservative, mirror-equivariant, range-limited by construction (ablated: each piece gives
+  exactly one guarantee); learned schemes run under contracts checked on the card and are undone on a breach.
+- **Results, out of sample against classical baselines:** a coarse-lattice correction cuts error 4x (28 K vs 104 K
+  plain, 107 K fitted), a learned discretization is stable at 2x the step but loses to substeps, an online world
+  model + MPPI plans as well as a hand-written rule without being told the gradient. Negative results are reported.
+- **Speed:** a 43-term, 39-field law on 1 M cells: 11.8 ms a step on an RTX 3060 Laptop, 26x the 8-thread CPU.
+
+![Close up: water mana condensing into a pool, balls of ice, wood and stone, a fire mana burst](docs/sandbox_effects.png)
 
 ## Report
 

@@ -319,6 +319,7 @@ bool Sandbox::finish_world()
     focus_set_ = true;
     make_tools();
     show_profiler_ = env_is("SANDBOX_PROFILER", "1");
+    show_ui_ = !env_is("SANDBOX_CLEAN", "1"); // captures without panels, as Tab does
     if (env_is("SANDBOX_LEARNED", "1")) {
         world_->set_learned(true);
     }
