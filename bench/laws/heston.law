@@ -1,0 +1,22 @@
+# HESTON as a law (bench/finance.py): two dimensions, x = ln S along the lattice's x and the variance along its y,
+# scaled so one lattice spacing serves both: var = sig_v * y. In time to maturity tau, with V_var = V_y / sig_v:
+#
+#   dV/dtau = 1/2 var (V_xx + V_yy) + rho var V_xy + (r - 1/2 var) V_x + kappa (theta - var) / sig_v V_y - r V
+#
+# 1/2 var (V_xx + V_yy) is diffuse(1/2 var, V) less the 1/2 sig_v V_y its flux form adds (k grows along y); the mixed
+# derivative is gx(gy(V)), the four-corner stencil; the variance drift is upwind (adv), which is also the right
+# boundary scheme at var = 0, where the PDE has no diffusion and the drift points into the domain. Each cell's
+# variance is a static field (the cell centre's), written by the driver. (Not `v`: V.bin and v.bin are one file on a
+# case-blind file system.)
+field V init 0 range -1 1000000
+field var init 0 range 0 100 static
+
+param sig_v = 0.3
+param kappa = 1.5
+param theta = 0.04
+param rho = -0.9
+param r = 0.025
+
+term heston
+  d V = diffuse(0.5 * var, V) - 0.5 * sig_v * gy(V) + rho * var * gx(gy(V)) + (r - 0.5 * var) * gx(V) + adv(V, 0, -kappa * (theta - var) / sig_v, 0) - r * V
+  max_dt = 0.2 * h * h / maxof(var)

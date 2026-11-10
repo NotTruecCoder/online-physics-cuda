@@ -1,0 +1,21 @@
+# BLACK-SCHOLES in log-price, as a law (bench/finance.py). The lattice's x is x = ln S, the step runs in time to
+# maturity tau, and V starts as the payoff:
+#
+#   dV/dtau = 1/2 sig^2 V_xx + (r - 1/2 sig^2) V_x - r V
+#
+# Zero-flux ends (the edge cell repeats): right for a put, whose V_x vanishes at both ends of a wide enough domain.
+# An American put adds a penalty towards the payoff P; with lam = 1/dt and one substep a step it is the projection
+# V = max(V, P) after every step (lam = 0: European).
+field V init 0 range -1 1000000
+field P init 0 range -1 1000000 static
+
+param sig = 0.2
+param r = 0.05
+param lam = 0
+
+term black_scholes
+  d V = diffuse(0.5 * sig * sig, V) + (r - 0.5 * sig * sig) * gx(V) - r * V
+  max_dt = 0.4 * h * h / (sig * sig)
+
+term early_exercise
+  d V = lam * pos(P - V)
