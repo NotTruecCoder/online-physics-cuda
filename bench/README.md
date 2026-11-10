@@ -15,6 +15,9 @@ repository root:
 | `python bench/model2_front.py` | learned coarse-lattice correction on unseen initial conditions, against plain and calibrated coarse, and its cost | ~40 min (CPU JAX) |
 | `python bench/model3_heat.py` | learned discretization at 2x the step: accuracy on held-out and OOD fields, guard, cost | ~45 min (CPU JAX) |
 | `python bench/mind.py` | world model + MPPI against still, random, a hand-written rule and MPPI with the true dynamics | ~30 min |
+| `python bench/finance.py` | Black-Scholes (European, American) and Heston as laws, against closed forms; greeks by `jax.grad` | ~3 min |
+| `python bench/frameworks.py` | the same stencil in the engine, Taichi, Warp, PyTorch, Numba and NumPy (`pip install taichi warp-lang torch numba`) | ~3 min |
+| `python bench/plots.py` | the SVG figures in `docs/figures/` from the results | seconds |
 
 `model2_front.py` and `model3_heat.py` also write the trained nets the engine ships (`assets/nets/*.net`). Python
 dependencies: `pip install -r requirements.txt` (CPU JAX is enough).

@@ -1,0 +1,125 @@
+{
+ "card": "NVIDIA GeForce RTX 3060 Laptop GPU",
+ "sizes": {
+  "128": {
+   "rows": [
+    {
+     "name": "engine, lazy readback, contracts off",
+     "ms": 0.2453,
+     "version": "this repo",
+     "gbs_8b": 68.39468406033428
+    },
+    {
+     "name": "engine, contracts on, every step read back",
+     "ms": 3.2604,
+     "version": "this repo",
+     "gbs_8b": 5.145753895227579
+    },
+    {
+     "name": "handwritten CUDA (ping-pong)",
+     "ms": 0.094176,
+     "version": "bench_stencil",
+     "card_only": true,
+     "gbs_8b": 178.14746856948693
+    },
+    {
+     "name": "Taichi (CUDA)",
+     "ms": 0.3978000022470951,
+     "version": "taichi (1, 7, 4)",
+     "max_abs_diff_vs_numpy_K": 0.00030517578125,
+     "gbs_8b": 42.17500227558763
+    },
+    {
+     "name": "Warp (CUDA)",
+     "ms": 0.20929996389895678,
+     "version": "warp 1.19.0",
+     "max_abs_diff_vs_numpy_K": 0.000244140625,
+     "gbs_8b": 80.15871425615484
+    },
+    {
+     "name": "PyTorch eager (CUDA)",
+     "ms": 0.8778499905019999,
+     "version": "torch 2.11.0+cu128",
+     "max_abs_diff_vs_numpy_K": 0.0,
+     "gbs_8b": 19.11171177481693
+    },
+    {
+     "name": "Numba parallel (CPU)",
+     "ms": 1.9245999865233898,
+     "version": "numba 0.61.2, 12 threads",
+     "max_abs_diff_vs_numpy_K": 0.000244140625,
+     "gbs_8b": 8.717248320419285
+    },
+    {
+     "name": "NumPy (CPU, 1 thread)",
+     "ms": 44.73560000769794,
+     "version": "numpy 1.26.4",
+     "max_abs_diff_vs_numpy_K": 0.0,
+     "gbs_8b": 0.3750305349009075
+    }
+   ],
+   "copy_gbs": 260.063,
+   "engine_max_abs_diff_vs_hand_K": 0
+  },
+  "256": {
+   "rows": [
+    {
+     "name": "engine, lazy readback, contracts off",
+     "ms": 1.008,
+     "version": "this repo",
+     "gbs_8b": 133.15250793650793
+    },
+    {
+     "name": "engine, contracts on, every step read back",
+     "ms": 25.5995,
+     "version": "this repo",
+     "gbs_8b": 5.242982402000039
+    },
+    {
+     "name": "handwritten CUDA (ping-pong)",
+     "ms": 0.477184,
+     "version": "bench_stencil",
+     "card_only": true,
+     "gbs_8b": 281.2703862660944
+    },
+    {
+     "name": "Taichi (CUDA)",
+     "ms": 3.14250000519678,
+     "version": "taichi (1, 7, 4)",
+     "max_abs_diff_vs_numpy_K": 0.00030517578125,
+     "gbs_8b": 42.71049412189116
+    },
+    {
+     "name": "Warp (CUDA)",
+     "ms": 0.8245499921031296,
+     "version": "warp 1.19.0",
+     "max_abs_diff_vs_numpy_K": 0.00030517578125,
+     "gbs_8b": 162.77694413368314
+    },
+    {
+     "name": "PyTorch eager (CUDA)",
+     "ms": 5.871500005014241,
+     "version": "torch 2.11.0+cu128",
+     "max_abs_diff_vs_numpy_K": 0.0,
+     "gbs_8b": 22.859188944116244
+    },
+    {
+     "name": "Numba parallel (CPU)",
+     "ms": 14.468400040641427,
+     "version": "numba 0.61.2, 12 threads",
+     "max_abs_diff_vs_numpy_K": 0.00030517578125,
+     "gbs_8b": 9.276611624159221
+    },
+    {
+     "name": "NumPy (CPU, 1 thread)",
+     "ms": 328.8623000262305,
+     "version": "numpy 1.26.4",
+     "max_abs_diff_vs_numpy_K": 0.0,
+     "gbs_8b": 0.4081274381079698
+    }
+   ],
+   "copy_gbs": 298.569,
+   "engine_max_abs_diff_vs_hand_K": 0
+  }
+ }
+}

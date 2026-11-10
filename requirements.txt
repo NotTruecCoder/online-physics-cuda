@@ -4,3 +4,6 @@ jax==0.5.0
 jaxlib==0.5.0
 optax>=0.2
 numpy>=1.26
+scipy>=1.11
+matplotlib>=3.8
+# Only for bench/frameworks.py (the comparison): taichi, warp-lang, torch, numba.
