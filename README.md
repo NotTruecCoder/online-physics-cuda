@@ -1,10 +1,31 @@
 # Field Engine
 
-**A compiler from physical laws written as text to deterministic CUDA kernels. Neural networks are operators of the
-language, structure-preserving and run under runtime contracts. Every learned model is evaluated against classical
-baselines on data it was not trained on.**
+[![ci](https://github.com/NotTruecCoder/online-physics-cuda/actions/workflows/ci.yml/badge.svg)](https://github.com/NotTruecCoder/online-physics-cuda/actions/workflows/ci.yml)
 
-![A town under the law: a flood, balls of stone, wood and ice in flight, fire mana, townspeople gossiping](docs/sandbox_town.png)
+**A compiler from PDEs written as text to deterministic CUDA kernels.** Ten lines of law become an SSA IR and one
+CUDA unit compiled by NVRTC at run time; the same IR runs on an OpenMP CPU reference and as a JAX twin for `jax.grad`.
+
+```
+law (bench/laws/black_scholes.law)                     IR (lawc --ir)                    CUDA (lawc --cuda)
+field V init 0 range -1 1000000                        %4  = field V        [cell]       extern "C" __global__ void g_t0(float DT) {
+field P init 0 range -1 1000000 static                 %5  = diffuse %3 %4  [reads 1]      const float r0 = v12(x, y, z);
+param sig = 0.2                                        %8  = gx %4          [reads 1]      float n = FT[0].now[i];
+param r = 0.05                                         %12 = sub %10 %11    [cell]         d = r0 * DT; if (d != 0.f) n += d;
+term black_scholes                                     %18 = div %16 %17    [scalar]       FT[0].next[i] = n;   // ping-pong
+  d V = diffuse(0.5*sig*sig, V)                        black_scholes: one kernel           mark(0, ch); }
+        + (r - 0.5*sig*sig) * gx(V) - r * V              (ping-pong buffers)
+  max_dt = 0.4 * h * h / (sig * sig)                   max_dt -> substeps on the host
+```
+
+![Convergence of the generated code](docs/figures/convergence.svg)
+
+- **Right:** order 2.0 against exact solutions, CPU = CUDA; a Black-Scholes put to 1e-3, an American put to 2e-4 of a
+  binomial tree, Heston to 8e-4 of the characteristic-function price; greeks by `jax.grad` ([finance](bench/results/finance.md)).
+- **Fast enough to compare:** one 7-point stencil on 256³ is 1.0 ms a step against Warp 0.83, Taichi 3.1, PyTorch 5.9,
+  a handwritten kernel 0.48 ([frameworks](bench/results/frameworks.md), [roofline](docs/figures/roofline.svg)).
+- **Reproducible:** no float atomics, fixed-order reductions: bit-identical runs, bit-identical to the handwritten kernel.
+
+![A law param changed live in the sandbox (F1)](docs/live_law.gif)
 
 ## At a glance
 
@@ -18,7 +39,9 @@ baselines on data it was not trained on.**
 - **Results, out of sample against classical baselines:** a coarse-lattice correction cuts error 4x (28 K vs 104 K
   plain, 107 K fitted), a learned discretization is stable at 2x the step but loses to substeps, an online world
   model + MPPI plans as well as a hand-written rule without being told the gradient. Negative results are reported.
-- **Speed:** a 43-term, 39-field law on 1 M cells: 11.8 ms a step on an RTX 3060 Laptop, 26x the 8-thread CPU.
+- **Speed:** a 43-term, 39-field law on 1 M cells: 7.8 ms a step on an RTX 3060 Laptop. Terms that read their own
+  neighbours write to a second buffer that is swapped in (ping-pong); results stay on the card until read (lazy
+  readback; bounds for idle-term skipping worked out there).
 
 ![Close up: water mana condensing into a pool, balls of ice, wood and stone, a fire mana burst](docs/sandbox_effects.png)
 
@@ -48,13 +71,14 @@ One conduction term on N³, card time a step ([perf](bench/results/perf.md)):
 | 128³ | 256 GB/s | 0.096 ms | 0.21 ms | 0.37 ms | 3.3 ms |
 | 256³ | 297 GB/s | 0.50 ms (269 GB/s, 91% of copy) | 1.53 ms | 2.20 ms | 28 ms |
 
-- Generated code is **~3x the handwritten kernel** at 256³: a term that reads its own neighbours is gathered into a
-  delta buffer and stored in a second pass (4 field transfers instead of 2), plus ring addressing.
+- Generated code is **1.9x the handwritten kernel** at 256³ (0.94 against 0.51 ms; it was 3x before ping-pong
+  buffers): what is left is ring addressing and the change flags. Full table and tails in [perf](bench/results/perf.md).
 - Contract checks (range, conserved total, every step) cost **+44%**. Before this round they cost +290%: the total was
   a thread a row (uncoalesced) and every changed cell wrote one shared flag. Now it is a warp a row with a fixed shuffle
   tree and a ballot, still bit-reproducible.
-- **The bottleneck is the readback**, not the kernels: the engine copies changed fields to the host every step (the
-  mesher and bodies read them), 64 MB at 256³.
+- **Readback is lazy** (`Solver::set_lazy_readback`): a step at 256³ went from 33 ms (every changed field copied
+  back) to 1.1 ms p50, 2.3 ms p99 ([tails](docs/figures/tails.svg)). The world keeps the eager copy; its mesher reads
+  every step.
 - The shipped world law (43 terms, 39 fields, 1 M cells): CPU (OpenMP, 8 threads) 307 ms → CUDA **11.8 ms** a step, 26x.
 
 ### Do the learned models help, out of sample?
@@ -131,9 +155,9 @@ invariance from mean removal. Each holds for any weights; no training is involve
 - Not done: multi-GPU; lazy readback (it needs the per-field bounds that let idle terms be skipped computed on the
   card, since today they are read off the downloaded cells); flowing rivers; a learned simulator over the engine's own
   fields with the guard as its safety net (the natural next model).
-- Known issue: one check of gate `voxel_map` fails. Water mana poured every tick while falling, with the law on its own
-  thread and the window moving up and down, ends up more than 3 m under where you land. The horizontal case passes
-  (`voxel_gpu`). 19 other gates pass; `voxel_beyond` runs for over 40 minutes and was not run to its end in this round.
+- Gates: all pass on Windows; CI runs the compiler's and the fast world gates on Linux on every push, the five slow
+  world gates weekly ([slow-gates](.github/workflows/slow-gates.yml)). GCC found a dangling reference MSVC hid
+  (WorldModel, fixed).
 
 ## What it is
 
@@ -190,14 +214,14 @@ term heat
   line compiled into the kernel as the cost, noise a hash of (agent, tick, sample, step).
 - **Systems.** Driver API and NVRTC loaded at run time; ring-addressed lattice so a moving window uploads only arriving
   chunks; pinned readback of changed fields only; CUDA-event profiler per term; a law hot-reloaded while the world runs.
-- **Testing as falsification.** 21 gates (`src/tests`) state claims about the world, each naming the mutation of the
+- **Testing as falsification.** 21 gates (`src/tests`, `demo/tests`) state claims about the world, each naming the mutation of the
   engine that makes it fail; those mutations were run.
 
 `src/field/FIELD.md` is the design document (the language, contracts, the IR, the backends, the open world, NPCs).
 
-## The world it runs
+## Demo: the world it runs
 
-The engine drives a voxel world (`src/field/Playground`, `WorldMap`, `Terrain`, `People`, the sandbox): heat,
+The engine drives a voxel world (`demo/world`: `Playground`, `WorldMap`, `Terrain`, `People`; `demo/sandbox`): heat,
 combustion, phase changes, water, lava, structural support and light as 43 terms over 39 fields; rigid voxel pieces;
 a 262 × 262 km generated continent in layers (plates, climate, drainage, a 16-age history, towns built by culture and
 changed by events); creatures and townspeople whose minds are lines of the same language. No line of C++ says
@@ -246,13 +270,14 @@ et al. 2017.
 
 | path | what |
 | --- | --- |
-| `src/field/` | the engine: law language, CPU reference solver, surface/bodies/rays, world, creatures, society |
+| `src/field/` | the compiler: law language, CPU reference solver, contracts |
 | `src/field/ir/`, `src/field/cuda/` | the IR; CUDA codegen, NVRTC loading, the CUDA backend, network kernels |
 | `src/field/nn/`, `src/field/mind/` | networks of the law (CPU reference); the world model and MPPI planner |
 | `tools/lawc/`, `tools/lawjax/` | the compiler CLI; the JAX twin and parity check |
 | `bench/` | verification, performance, ablations, the three models' evaluations, and their results |
-| `src/tests/` | the gates |
-| `src/render/`, `src/sandbox/` | bgfx renderer and the interactive sandbox |
+| `src/tests/` | the compiler's gates |
+| `demo/world/`, `demo/tests/` | the demo world (bodies, rays, map, people, items, melee) and its gates |
+| `demo/render/`, `demo/sandbox/` | bgfx renderer and the interactive sandbox |
 | `assets/law/` | the laws (world, magic, life, people, map, pours; bench laws) |
 
 ## License
