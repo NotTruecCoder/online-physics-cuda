@@ -70,6 +70,12 @@ public:
     CUdeviceptr param_symbol = 0;
     GridHost grid{};
     Buffer S, A, D, U, C, L, R, W, NF, F, snapshot;
+    // Each field's buffer now and its other buffer (ping-pong; fields no program writes out of place have none), as the
+    // device's FT table.
+    struct FieldPair { CUdeviceptr now; CUdeviceptr next; };
+    Buffer spare;
+    std::vector<FieldPair> pairs;
+    CUdeviceptr table_symbol = 0;
     Pinned pinned;
     std::vector<unsigned> changed_words;
     std::vector<float> params;
@@ -117,7 +123,12 @@ public:
         }
         grid_symbol = mod.global("G");
         param_symbol = mod.global("P");
-        if (grid_symbol == 0 || param_symbol == 0) {
+        table_symbol = mod.global("FT");
+        if (fields_n > 256) {
+            why = "more than 256 fields";
+            return false;
+        }
+        if (grid_symbol == 0 || param_symbol == 0 || table_symbol == 0) {
             why = "the law module has no grid";
             return false;
         }
@@ -171,7 +182,7 @@ public:
         }
         const bool ok = S.allocate(4 * n * static_cast<std::size_t>(fields_n)) &&
             A.allocate(4 * n * static_cast<std::size_t>(std::max(lay.aux_slots, 1))) &&
-            D.allocate(4 * n * static_cast<std::size_t>(lay.max_equations)) &&
+            D.allocate(4) &&
             U.allocate(4 * static_cast<std::size_t>(std::max(lay.uniforms, 1))) &&
             C.allocate(4 * static_cast<std::size_t>(fields_n)) &&
             L.allocate(4 * std::max(n, 3 * static_cast<std::size_t>(shape.ny) * static_cast<std::size_t>(shape.nz) + 16)) &&
@@ -194,9 +205,50 @@ public:
         grid = GridHost{shape.nx, shape.ny, shape.nz, shape.nx * shape.ny, cells, 0, 0, 0, static_cast<float>(shape.cell), 0,
             S.ptr(), A.ptr(), D.ptr(), U.ptr(), C.ptr(), L.ptr(), R.ptr(), W.ptr(), F.ptr(), NF.ptr()};
         write_grid();
+        // The fields some program writes out of place get a second buffer.
+        std::vector<int> swapped;
+        for (const auto* list : {&lay.terms, &lay.learned, &lay.derives}) {
+            for (const ProgramCode& code : *list) {
+                for (const int f : code.swaps) {
+                    if (std::find(swapped.begin(), swapped.end(), f) == swapped.end()) {
+                        swapped.push_back(f);
+                    }
+                }
+            }
+        }
+        if (!swapped.empty() && !spare.allocate(4 * n * swapped.size())) {
+            why = "could not allocate the lattice on " + name;
+            return false;
+        }
+        pairs.assign(static_cast<std::size_t>(fields_n), FieldPair{});
+        for (int f = 0; f < fields_n; ++f) {
+            pairs[static_cast<std::size_t>(f)].now = S.ptr() + 4ull * n * static_cast<std::size_t>(f);
+            pairs[static_cast<std::size_t>(f)].next = pairs[static_cast<std::size_t>(f)].now;
+        }
+        for (std::size_t k = 0; k < swapped.size(); ++k) {
+            pairs[static_cast<std::size_t>(swapped[k])].next = spare.ptr() + 4ull * n * k;
+        }
+        if (!pairs.empty()) {
+            a.cuMemcpyHtoDAsync(table_symbol, pairs.data(), pairs.size() * sizeof(FieldPair), dev->stream);
+            a.cuStreamSynchronize(dev->stream);
+        }
         params.assign(law.param_values.size(), std::numeric_limits<float>::quiet_NaN());
         changed_words.resize(static_cast<std::size_t>(fields_n));
         return true;
+    }
+
+    // Where field f lives now.
+    CUdeviceptr base(int f) const { return pairs[static_cast<std::size_t>(f)].now; }
+
+    // After a kernel wrote these fields' next values: they are the fields now. A copy from pageable memory is staged
+    // when it is queued, so the host table may change again right after.
+    void swap_fields(const ProgramCode& code)
+    {
+        for (const int f : code.swaps) {
+            FieldPair& pair = pairs[static_cast<std::size_t>(f)];
+            std::swap(pair.now, pair.next);
+            dev->api.cuMemcpyHtoDAsync(table_symbol + sizeof(FieldPair) * static_cast<std::size_t>(f), &pair, sizeof(FieldPair), dev->stream);
+        }
     }
 
     void write_grid()
@@ -535,9 +587,7 @@ public:
                 run_stage(stage, sub_dt);
             }
             cells_launch(code.gather, {&sub_dt});
-            if (!code.in_place) {
-                cells_launch(code.store, {&sub_dt});
-            }
+            swap_fields(code);
         }
         for (const int field : term.writes) {
             const FieldDecl& decl = law.fields[static_cast<std::size_t>(field)];
@@ -579,7 +629,7 @@ public:
             // GUARDED. Snapshot what it writes, run the learned scheme, judge its own contracts now.
             const std::size_t bytes = 4 * static_cast<std::size_t>(cells);
             for (std::size_t w = 0; w < term.writes.size(); ++w) {
-                dev->api.cuMemcpyDtoDAsync(snapshot.ptr() + w * bytes, S.ptr() + static_cast<std::size_t>(term.writes[w]) * bytes, bytes, dev->stream);
+                dev->api.cuMemcpyDtoDAsync(snapshot.ptr() + w * bytes, base(term.writes[w]), bytes, dev->stream);
             }
             const std::vector<Bounds> flowing_before = flowing;
             const int first_record = next_record;
@@ -598,7 +648,7 @@ public:
             } else {
                 // Undo it: the snapshot back, the records it used free again, the bounds as they were.
                 for (std::size_t w = 0; w < term.writes.size(); ++w) {
-                    dev->api.cuMemcpyDtoDAsync(S.ptr() + static_cast<std::size_t>(term.writes[w]) * bytes, snapshot.ptr() + w * bytes, bytes, dev->stream);
+                    dev->api.cuMemcpyDtoDAsync(base(term.writes[w]), snapshot.ptr() + w * bytes, bytes, dev->stream);
                 }
                 const std::size_t clear = static_cast<std::size_t>(next_record - first_record);
                 dev->api.cuMemsetD32Async(R.ptr() + 4ull * static_cast<unsigned long long>(first_record), 0, clear, dev->stream);
@@ -671,9 +721,7 @@ public:
                 run_stage(stage, dt);
             }
             cells_launch(code.gather, {&dt});
-            if (!code.in_place) {
-                cells_launch(code.store, {&dt});
-            }
+            swap_fields(code);
         }
         if (check && checking) {
             std::set<int> seen;
@@ -737,7 +785,7 @@ public:
     void upload_field(int field, const float* host)
     {
         if (!ringed()) {
-            dev->api.cuMemcpyHtoDAsync(S.ptr() + 4ull * static_cast<unsigned long long>(field) * static_cast<unsigned long long>(cells), host,
+            dev->api.cuMemcpyHtoDAsync(base(field), host,
                 static_cast<std::size_t>(cells) * 4, dev->stream);
             profile_.upload_bytes += static_cast<std::size_t>(cells) * 4;
             return;
@@ -892,7 +940,7 @@ public:
                     cells_launch("k_linearize", {&f});
                     dev->api.cuMemcpyDtoHAsync(to, L.ptr(), bytes, dev->stream);
                 } else {
-                    dev->api.cuMemcpyDtoHAsync(to, S.ptr() + static_cast<std::size_t>(field) * bytes, bytes, dev->stream);
+                    dev->api.cuMemcpyDtoHAsync(to, base(field), bytes, dev->stream);
                 }
             }
             dev->api.cuStreamSynchronize(dev->stream);

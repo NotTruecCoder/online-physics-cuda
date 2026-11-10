@@ -38,6 +38,10 @@ struct Grid {
 };
 __constant__ Grid G;
 __constant__ float P[1024];
+// Where each field lives now, and the buffer a term that reads its own neighbours writes its next values to: after it
+// runs, the host swaps the two (ping-pong), so the step moves one read and one write a cell, not a delta through D.
+struct FieldPair { float* now; float* next; };
+__constant__ FieldPair FT[256];
 
 __device__ __forceinline__ int I(int x, int y, int z)
 {
@@ -58,7 +62,7 @@ __device__ __forceinline__ float face(float ka, float kb, float va, float vb)
     return (s > 0.f ? 2.f * ka * kb / s : 0.f) * (vb - va);
 }
 #define AT(slot, x, y, z) G.A[(u64)(slot) * G.cells + I(x, y, z)]
-#define FIELD(f, x, y, z) G.S[(u64)(f) * G.cells + I(x, y, z)]
+#define FIELD(f, x, y, z) FT[f].now[I(x, y, z)]
 #define CELL_HEAD const int x = blockIdx.x * blockDim.x + threadIdx.x; const int y = blockIdx.y * blockDim.y + threadIdx.y; \
     const int z = blockIdx.z; if (x >= G.nx || y >= G.ny) return;
 
@@ -723,19 +727,17 @@ private:
             code.in_place = !reads_itself;
             const std::string t = std::to_string(eq.target);
             code.gather = "g_" + tag;
+            out_ << "extern \"C\" __global__ void " << code.gather << "(float DT) { CELL_HEAD\n"
+                 << "    const float v = " << v(eq.value) << "; const int i = I(x, y, z); const float old = FT[" << t << "].now[i];\n"
+                 << "    const float next = " << (p.accumulate ? "old + " : "0.f + ") << "v;\n"
+                 << "    const bool ch = __float_as_uint(old) != __float_as_uint(next); ";
             if (code.in_place) {
-                out_ << "extern \"C\" __global__ void " << code.gather << "(float DT) { CELL_HEAD\n"
-                     << "    const float v = " << v(eq.value) << "; const u64 k = (u64)" << t << " * G.cells + I(x, y, z);\n"
-                     << "    const float next = " << (p.accumulate ? "G.S[k] + " : "0.f + ") << "v;\n"
-                     << "    const bool ch = __float_as_uint(G.S[k]) != __float_as_uint(next); if (ch) G.S[k] = next; mark(" << t << ", ch); }\n";
+                out_ << "if (ch) FT[" << t << "].now[i] = next;";
             } else {
-                code.store = "s_" + tag;
-                out_ << "extern \"C\" __global__ void " << code.gather << "(float DT) { CELL_HEAD G.D[I(x, y, z)] = " << v(eq.value) << "; }\n"
-                     << "extern \"C\" __global__ void " << code.store << "(float DT) { CELL_HEAD\n"
-                     << "    const int i = I(x, y, z); const u64 k = (u64)" << t << " * G.cells + i;\n"
-                     << "    const float next = " << (p.accumulate ? "G.S[k] + " : "0.f + ") << "G.D[i];\n"
-                     << "    const bool ch = __float_as_uint(G.S[k]) != __float_as_uint(next); if (ch) G.S[k] = next; mark(" << t << ", ch); }\n";
+                out_ << "FT[" << t << "].next[i] = next;"; // every cell: the buffers are swapped after
+                code.swaps.push_back(eq.target);
             }
+            out_ << " mark(" << t << ", ch); }\n";
             return code;
         }
         code.in_place = p.in_place;
@@ -745,30 +747,35 @@ private:
         for (std::size_t e = 0; e < p.equations.size(); ++e) {
             g << "    const float r" << e << " = " << v(p.equations[e].value) << ";\n";
         }
+        g << "    float d;\n";
         if (code.in_place) {
-            g << "    float d;\n";
             for (std::size_t e = 0; e < p.equations.size(); ++e) {
                 const std::string t = std::to_string(p.equations[e].target);
-                g << "    d = r" << e << " * DT; if (d != 0.f) G.S[(u64)" << t << " * G.cells + i] += d; mark(" << t << ", d != 0.f);\n";
+                g << "    d = r" << e << " * DT; if (d != 0.f) FT[" << t << "].now[i] += d; mark(" << t << ", d != 0.f);\n";
             }
         } else {
-            for (std::size_t e = 0; e < p.equations.size(); ++e) {
-                g << "    G.D[(u64)" << e << " * G.cells + i] = r" << e << " * DT;\n";
+            // Ping-pong: every right side was read from the fields as they were; each target's next value goes to its
+            // other buffer, the equations on one target added in their order (as the stores were).
+            std::vector<int> targets;
+            for (const ir::Equation& eq : p.equations) {
+                if (std::find(targets.begin(), targets.end(), eq.target) == targets.end()) {
+                    targets.push_back(eq.target);
+                }
             }
+            for (const int target : targets) {
+                const std::string t = std::to_string(target);
+                g << "    { float n = FT[" << t << "].now[i]; bool ch = false;\n";
+                for (std::size_t e = 0; e < p.equations.size(); ++e) {
+                    if (p.equations[e].target == target) {
+                        g << "      d = r" << e << " * DT; if (d != 0.f) { n += d; ch = true; }\n";
+                    }
+                }
+                g << "      FT[" << t << "].next[i] = n; mark(" << t << ", ch); }\n";
+            }
+            code.swaps = targets;
         }
         g << "}\n";
         out_ << g.str();
-        if (!code.in_place) {
-            code.store = "s_" + tag;
-            std::ostringstream s;
-            s << "extern \"C\" __global__ void " << code.store << "(float DT) { CELL_HEAD\n    const int i = I(x, y, z); float d;\n";
-            for (std::size_t e = 0; e < p.equations.size(); ++e) {
-                const std::string t = std::to_string(p.equations[e].target);
-                s << "    d = G.D[(u64)" << e << " * G.cells + i]; if (d != 0.f) G.S[(u64)" << t << " * G.cells + i] += d; mark(" << t << ", d != 0.f);\n";
-            }
-            s << "}\n";
-            out_ << s.str();
-        }
         return code;
     }
 

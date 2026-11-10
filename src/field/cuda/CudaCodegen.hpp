@@ -22,8 +22,8 @@ struct StageCode {
 
 struct ProgramCode {
     std::string gather;      // empty: no equations
-    std::string store;       // empty when in place
     bool in_place = false;
+    std::vector<int> swaps;  // not in place: the fields whose two buffers swap after the kernel (ping-pong)
     std::vector<int> stages;
     std::vector<int> limit_stages;
     int max_dt = -1;         // an instruction; evaluated on the host
