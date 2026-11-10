@@ -12,6 +12,7 @@ RUN apt-get update \
 WORKDIR /workspace
 COPY CMakeLists.txt CMakePresets.json requirements.txt ./
 COPY src ./src
+COPY demo ./demo
 COPY tools ./tools
 COPY bench ./bench
 COPY assets ./assets

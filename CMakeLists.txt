@@ -24,11 +24,9 @@ if(FIELD_BUILD_SANDBOX)
 endif()
 
 # --- The field engine -------------------------------------------------------------------------------
-# The world as scalar fields on one voxel lattice, its laws compiled from text (assets/law), integrated on
-# the CPU (the reference), as CUDA kernels generated from the law's IR and compiled by NVRTC at run time, or as HLSL
-# compute shaders; networks inside the law (mlp, flux, ldiffuse) on tensor cores; bodies, rays and the picture reading
-# one surface; a generated continent streamed around the viewer; creatures and people whose minds are lines of the same
-# law, or a world model they learn. No window and no renderer, so it is tested on its own (src/field/FIELD.md).
+# The compiler and its runtime: the law language, the CPU reference solver, the SSA IR, the CUDA backend (kernels
+# generated from the IR, compiled by NVRTC at run time), the HLSL fallback, networks inside the law (mlp, flux,
+# ldiffuse) on tensor cores, the world model + MPPI planner. No world, no window (src/field/FIELD.md).
 file(GLOB_RECURSE FIELD_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/field/*.cpp" "${CMAKE_SOURCE_DIR}/src/field/*.hpp")
 add_library(field_engine STATIC ${FIELD_SOURCES})
 target_include_directories(field_engine PUBLIC src)
@@ -72,20 +70,28 @@ if(WIN32)
     target_link_libraries(field_engine PRIVATE d3d11 dxgi d3dcompiler)
 endif()
 
+# --- The demo world ---------------------------------------------------------------------------------
+# A voxel world driven by the engine, as its stress test: bodies, rays and meshes over one surface, a generated
+# continent streamed around the viewer, creatures, townspeople, items, melee. Not part of the compiler (demo/).
+file(GLOB_RECURSE WORLD_SOURCES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/demo/world/*.cpp" "${CMAKE_SOURCE_DIR}/demo/world/*.hpp")
+add_library(field_world STATIC ${WORLD_SOURCES})
+target_include_directories(field_world PUBLIC demo)
+target_link_libraries(field_world PUBLIC field_engine)
+
 if(FIELD_BUILD_SANDBOX)
 # --- Render -----------------------------------------------------------------------------------------
 # Camera math, units, post-process parameters: testable without a GPU.
 add_library(field_render_core STATIC
-    src/render/RenderTypes.hpp
-    src/render/Units.hpp
-    src/render/PostProcess.hpp
-    src/render/Camera.cpp
-    src/render/Camera.hpp
+    demo/render/RenderTypes.hpp
+    demo/render/Units.hpp
+    demo/render/PostProcess.hpp
+    demo/render/Camera.cpp
+    demo/render/Camera.hpp
 )
-target_include_directories(field_render_core PUBLIC src)
+target_include_directories(field_render_core PUBLIC src demo)
 target_link_libraries(field_render_core PUBLIC glm::glm)
 
-# The bgfx backend: shaders compiled at build time into headers embedded in the binary (src/render/SHADERS.md).
+# The bgfx backend: shaders compiled at build time into headers embedded in the binary (demo/render/SHADERS.md).
 set(SHADER_DIR "${CMAKE_SOURCE_DIR}/assets/shaders")
 set(SHADER_OUT "${CMAKE_BINARY_DIR}/generated/shaders")
 function(field_shader TYPE NAME VARYING OUT_VAR)
@@ -108,29 +114,29 @@ field_shader(VERTEX vs_post varying_post.def.sc SHADER_HEADERS)
 field_shader(FRAGMENT fs_post varying_post.def.sc SHADER_HEADERS)
 
 add_library(field_render STATIC
-    src/render/BgfxRenderer.cpp
-    src/render/BgfxRenderer.hpp
-    src/render/ImGuiBgfx.cpp
-    src/render/ImGuiBgfx.hpp
+    demo/render/BgfxRenderer.cpp
+    demo/render/BgfxRenderer.hpp
+    demo/render/ImGuiBgfx.cpp
+    demo/render/ImGuiBgfx.hpp
     ${SHADER_HEADERS}
 )
-target_include_directories(field_render PUBLIC src "${SHADER_OUT}")
+target_include_directories(field_render PUBLIC src demo "${SHADER_OUT}")
 target_link_libraries(field_render PUBLIC field_render_core bgfx::bgfx bgfx::bx bgfx::bimg bgfx::bimg_decode imgui::imgui glm::glm)
 
 # --- The sandbox ------------------------------------------------------------------------------------
 # A free camera over the generated world, and tools that act on it through the engine's public surface.
 add_executable(sandbox
-    src/sandbox/main.cpp
-    src/sandbox/Sandbox.cpp
-    src/sandbox/Sandbox.hpp
-    src/sandbox/Draw.cpp
-    src/sandbox/Panels.cpp
-    src/sandbox/WorldView.cpp
-    src/sandbox/WorldView.hpp
-    src/sandbox/Effects.cpp
-    src/sandbox/Effects.hpp
+    demo/sandbox/main.cpp
+    demo/sandbox/Sandbox.cpp
+    demo/sandbox/Sandbox.hpp
+    demo/sandbox/Draw.cpp
+    demo/sandbox/Panels.cpp
+    demo/sandbox/WorldView.cpp
+    demo/sandbox/WorldView.hpp
+    demo/sandbox/Effects.cpp
+    demo/sandbox/Effects.hpp
 )
-target_link_libraries(sandbox PRIVATE SDL3::SDL3 imgui::imgui field_engine field_render)
+target_link_libraries(sandbox PRIVATE SDL3::SDL3 imgui::imgui field_world field_render)
 endif()
 
 # The runtime data (laws, worlds, models) next to the binaries, so the build directory runs as it is.
@@ -159,10 +165,10 @@ target_link_libraries(bench_stencil PRIVATE field_engine)
 add_dependencies(bench_stencil copy_assets)
 
 # --- Gates ------------------------------------------------------------------------------------------
-# Every src/tests/*_smoke.cpp is a gate: a must-pass check of one claim the engine makes, each with a control
-# that shows the check can fail. A file is all it takes.
+# Every src/tests/*_smoke.cpp (the compiler) and demo/tests/*_smoke.cpp (the world) is a gate: a must-pass check of
+# one claim, each with a control that shows the check can fail. A file is all it takes.
 include(CTest)
-file(GLOB GATES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/tests/*_smoke.cpp")
+file(GLOB GATES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/tests/*_smoke.cpp" "${CMAKE_SOURCE_DIR}/demo/tests/*_smoke.cpp")
 foreach(gate_path IN LISTS GATES)
     get_filename_component(gate_file "${gate_path}" NAME_WE)
     string(REGEX REPLACE "_smoke$" "" gate_name "${gate_file}")
@@ -170,7 +176,11 @@ foreach(gate_path IN LISTS GATES)
         continue()
     endif()
     add_executable(gate_${gate_name} "${gate_path}")
-    target_link_libraries(gate_${gate_name} PRIVATE field_engine)
+    if(gate_path MATCHES "/demo/")
+        target_link_libraries(gate_${gate_name} PRIVATE field_world)
+    else()
+        target_link_libraries(gate_${gate_name} PRIVATE field_engine)
+    endif()
     if(gate_name STREQUAL "render_core")
         target_link_libraries(gate_${gate_name} PRIVATE field_render_core)
     elseif(gate_name STREQUAL "render_gpu")

@@ -146,7 +146,7 @@ does to the world after that is the law. Bodies read `PlayBody::surge` (a blow's
 simulation reads them back.
 
 `VoxelFigure` is a figure made of cubes, read from text (`assets/world/skins`, `beasts`, `clothes`), parts turning about their pivots;
-pure picture. `src/sandbox/Effects` is what comes off a pour or a landing (cubes, the view shaking): none of it
+pure picture. `demo/sandbox/Effects` is what comes off a pour or a landing (cubes, the view shaking): none of it
 reaches the simulation.
 
 Matter-moving ops, all conservative: `fall(F,B,speed)` drops F into the free space below (`1 - B - F`);
@@ -343,7 +343,7 @@ agree to the bit. Across different cards or drivers the bits are not promised.
 ## Drawing the open world
 
 The camera is orthographic, so every voxel on the screen is the same size: level of detail depends on the pixels
-a voxel covers at this zoom, not on distance (`WorldMesher`, shown by `src/sandbox/WorldView`). Each level doubles the
+a voxel covers at this zoom, not on distance (`WorldMesher`, shown by `demo/sandbox/WorldView`). Each level doubles the
 voxel's width and the region it is drawn in, so a region is always 16 voxels wide and the screen holds about the
 same number of meshes at any zoom, from single cubes to the whole world (twelve levels; a voxel of 1 km at the
 last). Height coarsens more slowly than width, so hills keep their shape. The mouse wheel sets how far you see; the
@@ -405,7 +405,7 @@ the line. Otherwise every field keeps its values by name, new fields start at th
 new values, creatures keep their bodies and the states the new law still has.
 
 `to_math` / `law_equations` print the running expression trees as the equations they are: `diffuse(k, T)` as
-div(k grad T), `step` as the Heaviside H, `pos` as [x]+. The sandbox's law panel (F1, `src/sandbox/Panels.cpp`) shows
+div(k grad T), `step` as the Heaviside H, `pos` as [x]+. The sandbox's law panel (F1, `demo/sandbox/Panels.cpp`) shows
 them, every param on a live slider, and the contracts broken so far.
 
 ## Next
