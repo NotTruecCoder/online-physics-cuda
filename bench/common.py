@@ -99,8 +99,11 @@ def mean_std(values) -> str:
 
 
 def cuda_available() -> bool:
+    """Whether lawc can run a law on CUDA here (a card, its driver and NVRTC): one step of a one-cell lattice."""
+    law = os.path.join(HERE, "laws", "diffusion.law")
     try:
-        out = subprocess.run([binary("lawc"), "--help"], cwd=BUILD, capture_output=True, text=True)
+        out = subprocess.run([binary("lawc"), law, "--grid", "4", "1", "1", "1", "--steps", "1", "--backend", "cuda"], cwd=BUILD,
+                             capture_output=True, text=True)
         return out.returncode == 0
     except FileNotFoundError:
         return False

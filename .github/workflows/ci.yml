@@ -5,8 +5,9 @@ on:
   pull_request:
 
 jobs:
-  # The engine, lawc, the benchmarks' executables and the gates, without the sandbox (no vcpkg needed). No GPU on the
-  # runner: the CUDA gates say so and check the CPU path; everything else runs as on a workstation.
+  # The compiler, lawc, the benchmarks' executables and the gates, without the sandbox (no vcpkg needed). No GPU on the
+  # runner: the CUDA gates say so and check the CPU path. The gates labelled `slow` (minutes each on 4 cores without
+  # a card) run in slow-gates.yml.
   linux-core:
     runs-on: ubuntu-24.04
     steps:
@@ -18,9 +19,10 @@ jobs:
       - name: Build
         run: cmake --build --preset linux-core
       - name: Gates
-        run: ctest --preset linux-core
+        run: ctest --preset linux-core -LE slow --timeout 900
 
-  # The JAX twin against the C++ reference: the whole shipped law, a few steps, field by field.
+  # The JAX twin against the C++ reference (the whole shipped law, a few steps, field by field), and the numerical
+  # checks that need no card: convergence orders and the finance PDEs on the CPU reference.
   lawjax-parity:
     runs-on: ubuntu-24.04
     needs: linux-core

@@ -18,7 +18,7 @@ import tempfile
 
 import numpy as np
 
-from common import BUILD, HERE, lawc, read_state, save, write_scene, write_state
+from common import BUILD, HERE, cuda_available, lawc, read_state, save, write_scene, write_state
 
 DIFF_LAW = os.path.join(HERE, "laws", "diffusion.law")
 ADV_LAW = os.path.join(HERE, "laws", "advection.law")
@@ -45,8 +45,9 @@ def orders(errors):
 def main():
     results = {}
     md = ["# Verification: order of convergence\n"]
+    backends = ("cpu", "cuda") if cuda_available() else ("cpu",)  # no card: the reference only
     with tempfile.TemporaryDirectory() as work:
-        for backend in ("cpu", "cuda"):
+        for backend in backends:
             # ---- diffusion --------------------------------------------------------------------------------------
             k, t_end, m = 0.01, 0.5, 4
             ns = [16, 32, 64, 128, 256]
@@ -85,8 +86,9 @@ def main():
             md.append(f"| {problem} | {backend} | {n} | {r['l2'][i]:.3e} | {order} |\n")
     md.append(f"\nLargest relative drift of the conserved total of T (float32, up to "
               f"{int(np.ceil(0.05 / (0.15 * (1 / 256) ** 2 / 0.01))) * 10} substeps): "
-              f"{max(max(results['diffusion_cpu']['relative_total_drift']), max(results['diffusion_cuda']['relative_total_drift'])):.1e}\n")
-    save("verify", results, "".join(md))
+              f"{max(max(results[f'diffusion_{b}']['relative_total_drift']) for b in backends):.1e}\n")
+    # Without a card (a container, CI) the results go to verify_cpu: the shipped verify.json keeps the CUDA rows.
+    save("verify" if "cuda" in backends else "verify_cpu", results, "".join(md))
 
 
 if __name__ == "__main__":

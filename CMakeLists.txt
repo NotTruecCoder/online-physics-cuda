@@ -168,6 +168,7 @@ add_dependencies(bench_stencil copy_assets)
 # Every src/tests/*_smoke.cpp (the compiler) and demo/tests/*_smoke.cpp (the world) is a gate: a must-pass check of
 # one claim, each with a control that shows the check can fail. A file is all it takes.
 include(CTest)
+set(FIELD_SLOW_GATES voxel_growth voxel_lava voxel_map voxel_people mind)
 file(GLOB GATES CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/src/tests/*_smoke.cpp" "${CMAKE_SOURCE_DIR}/demo/tests/*_smoke.cpp")
 foreach(gate_path IN LISTS GATES)
     get_filename_component(gate_file "${gate_path}" NAME_WE)
@@ -190,5 +191,15 @@ foreach(gate_path IN LISTS GATES)
     if(BUILD_TESTING)
         add_test(NAME ${gate_name} COMMAND gate_${gate_name})
         set_tests_properties(${gate_name} PROPERTIES WORKING_DIRECTORY "${CMAKE_BINARY_DIR}")
+        # Labels: `compiler` or `world`, and `slow` for gates that take minutes on a 4-core machine without a card
+        # (CI runs ctest -LE slow on every push; the slow ones run in their own workflow).
+        set(_labels compiler)
+        if(gate_path MATCHES "/demo/")
+            set(_labels world)
+        endif()
+        if(gate_name IN_LIST FIELD_SLOW_GATES)
+            list(APPEND _labels slow)
+        endif()
+        set_tests_properties(${gate_name} PROPERTIES LABELS "${_labels}")
     endif()
 endforeach()

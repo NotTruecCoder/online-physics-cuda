@@ -1,0 +1,23 @@
+name: slow-gates
+
+# The world's long gates (generation of the whole continent, lava and growth over many steps, the world model's CPU
+# planner): too slow for every push on a 4-core runner without a card. Weekly, and by hand.
+on:
+  schedule:
+    - cron: "0 3 * * 1"
+  workflow_dispatch:
+
+jobs:
+  linux-slow:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 240
+    steps:
+      - uses: actions/checkout@v4
+      - name: Tools
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends cmake ninja-build g++ libomp-dev
+      - name: Configure
+        run: cmake --preset linux-core
+      - name: Build
+        run: cmake --build --preset linux-core
+      - name: Slow gates
+        run: ctest --preset linux-core -L slow --timeout 5400
