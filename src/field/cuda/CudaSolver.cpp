@@ -77,6 +77,8 @@ public:
     Buffer bounds_keys; // lazy readback: 2 words a field
     bool lazy = false;
     std::vector<char> on_card; // lazy: the card's cells are newer than the host's
+    int lazy_steps = 0;
+    static constexpr int kTightenEvery = 8; // lazy: steps between measured bounds of integrated fields
     std::vector<FieldPair> pairs;
     CUdeviceptr table_symbol = 0;
     Pinned pinned;
@@ -536,10 +538,10 @@ public:
     std::vector<std::uint32_t> read_records(int upto)
     {
         std::vector<std::uint32_t> words(static_cast<std::size_t>(std::max(upto, 1)), 0u);
-        if (upto > 0) {
+        if (upto > 0) { // nothing recorded (contracts not looked at this step): no wait for the card
             dev->api.cuMemcpyDtoHAsync(words.data(), R.ptr(), static_cast<std::size_t>(upto) * 4, dev->stream);
+            dev->api.cuStreamSynchronize(dev->stream);
         }
-        dev->api.cuStreamSynchronize(dev->stream);
         return words;
     }
 
@@ -919,7 +921,7 @@ public:
 
     // What the kernels said changed comes back (through pinned memory, a group of fields at a time); a field no cell of
     // which moved is not copied anywhere.
-    void download(FieldSet& fields, std::vector<char>& changed_out)
+    void download(const Law& law, FieldSet& fields, std::vector<char>& changed_out)
     {
         const int start = event();
         dev->api.cuMemcpyDtoHAsync(changed_words.data(), C.ptr(), changed_words.size() * 4, dev->stream);
@@ -934,17 +936,35 @@ public:
         }
         changed_out = touched;
         if (lazy) {
-            // The bounds come back, not the cells: 8 bytes a field that moved.
+            // The bounds come back, not the cells: 8 bytes a field that moved. Between measurements an integrated field
+            // keeps the bounds flow_on carried through the terms (interval arithmetic: never narrower than the truth,
+            // so a term is never skipped that had work; only fewer are), measured every kTightenEvery steps; a derived
+            // field, which flow_on does not follow, is measured every step.
             on_card.resize(fields.count(), 0);
+            const bool tighten = lazy_steps++ % kTightenEvery == 0;
+            std::vector<int> measured;
+            for (int field : moved) {
+                const auto f = static_cast<std::size_t>(field);
+                on_card[f] = 1;
+                if (tighten || law.fields[f].derived) {
+                    measured.push_back(field);
+                } else {
+                    known[f] = flowing[f];
+                    known_zero[f] = flowing[f].lo == 0.0 && flowing[f].hi == 0.0 ? 1 : 0;
+                }
+            }
+            if (measured.empty()) {
+                profile_.download_ms = elapsed(start, event());
+                return;
+            }
             const Api& a = dev->api;
             a.cuMemsetD32Async(bounds_keys.ptr(), 0xffffffffu, static_cast<std::size_t>(fields_n), dev->stream);
             a.cuMemsetD32Async(bounds_keys.ptr() + 4ull * static_cast<std::size_t>(fields_n), 0u, static_cast<std::size_t>(fields_n), dev->stream);
             CUdeviceptr out = bounds_keys.ptr();
             int count = fields_n;
-            for (int field : moved) {
+            for (int field : measured) {
                 launch(fn("k_bounds"), static_cast<unsigned>(std::max(dev->sms, 1) * 8), 1, 1, 256, 1, 1, 0, {&field, &out, &count});
                 ++profile_.launches;
-                on_card[static_cast<std::size_t>(field)] = 1;
             }
             std::vector<std::uint32_t> keys(2 * static_cast<std::size_t>(fields_n));
             a.cuMemcpyDtoHAsync(keys.data(), bounds_keys.ptr(), keys.size() * 4, dev->stream);
@@ -955,7 +975,7 @@ public:
                 std::memcpy(&f, &b, 4);
                 return f;
             };
-            for (int field : moved) {
+            for (int field : measured) {
                 const auto f = static_cast<std::size_t>(field);
                 const float lo = value(keys[f]);
                 const float hi = value(keys[static_cast<std::size_t>(fields_n) + f]);
@@ -1053,7 +1073,7 @@ public:
         const int derive_start = event();
         run_derives(law, false, true);
         const int derive_end = event();
-        download(fields, changed);
+        download(law, fields, changed);
         dev->api.cuMemsetD32Async(C.ptr(), 0, static_cast<std::size_t>(fields_n), dev->stream);
         const std::vector<std::uint32_t> words = read_records(next_record);
         judge(law, words, conserve_checks, range_checks, violations);
@@ -1074,7 +1094,7 @@ public:
         begin_step(law);
         upload(fields, edits, law, true);
         run_derives(law, true, false);
-        download(fields, changed);
+        download(law, fields, changed);
         std::fill(dirty.begin(), dirty.end(), 0);
         dev->api.cuMemsetD32Async(C.ptr(), 0, static_cast<std::size_t>(fields_n), dev->stream);
         dev->api.cuStreamSynchronize(dev->stream);
