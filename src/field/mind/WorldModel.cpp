@@ -81,12 +81,12 @@ struct WorldModel::Gpu {
 
 std::string WorldModel::cost_code() const
 {
-    const CreatureDef& def = law_.creatures[static_cast<std::size_t>(def_)];
+    const CreatureDef& def = law_->creatures[static_cast<std::size_t>(def_)];
     std::function<std::string(const Node&)> e = [&](const Node& n) -> std::string {
         auto a = [&](std::size_t k) { return e(*n.args[k]); };
         switch (n.op) {
         case Op::Const: return literal(n.number);
-        case Op::Param: return literal(law_.param_values[static_cast<std::size_t>(n.index)]);
+        case Op::Param: return literal(law_->param_values[static_cast<std::size_t>(n.index)]);
         case Op::Cell: return "1.f";
         case Op::Local: return n.index < locals_ ? "s[" + std::to_string(n.index) + "]" : "0.f";
         case Op::Field: {
@@ -116,12 +116,12 @@ std::string WorldModel::cost_code() const
 
 float WorldModel::cost(const float* s) const
 {
-    const CreatureDef& def = law_.creatures[static_cast<std::size_t>(def_)];
+    const CreatureDef& def = law_->creatures[static_cast<std::size_t>(def_)];
     std::function<float(const Node&)> e = [&](const Node& n) -> float {
         auto a = [&](std::size_t k) { return e(*n.args[k]); };
         switch (n.op) {
         case Op::Const: return static_cast<float>(n.number);
-        case Op::Param: return static_cast<float>(law_.param_values[static_cast<std::size_t>(n.index)]);
+        case Op::Param: return static_cast<float>(law_->param_values[static_cast<std::size_t>(n.index)]);
         case Op::Cell: return 1.0f;
         case Op::Local: return n.index < locals_ ? s[n.index] : 0.0f;
         case Op::Field: {
@@ -149,7 +149,7 @@ float WorldModel::cost(const float* s) const
     return def.plan ? e(*def.plan) : 0.0f;
 }
 
-WorldModel::WorldModel(const Law& law, int creature) : law_(law), def_(creature)
+WorldModel::WorldModel(const Law& law, int creature) : law_(&law), def_(creature)
 {
     const CreatureDef& def = law.creatures[static_cast<std::size_t>(creature)];
     locals_ = static_cast<int>(def.locals.size());

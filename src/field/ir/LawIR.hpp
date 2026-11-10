@@ -18,7 +18,7 @@
 //              and whatever the cost model says is cheaper to store once than to recompute at every point of a stencil;
 //   gather   - every equation's rate at every cell, fused into one kernel: element-wise chains and stencils inline;
 //   in_place - when no equation reads a field it writes anywhere but at its own cell, the store is fused into the same
-//              kernel (one pass, no delta buffer); else a second kernel applies what the first gathered.
+//              kernel (one pass, in place); else it writes the next values to a second buffer that is swapped in (ping-pong).
 //
 // The CUDA backend generates kernels from this, lawc prints it, and tools/lawjax builds the same steps in JAX from its
 // JSON. The CPU interpreter is the reference all three are held to.

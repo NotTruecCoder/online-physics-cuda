@@ -617,7 +617,7 @@ std::string describe(const Module& m, const Law& law)
             return;
         }
         out << p.name << ": " << p.equations.size() << " equation(s), " << p.stages.size() << " stage(s), "
-            << (p.in_place ? "one kernel (in place)" : "gather + store") << "\n";
+            << (p.in_place ? "one kernel (in place)" : "one kernel (ping-pong buffers)") << "\n";
         for (const int s : p.stages) {
             out << "    stage %" << s << " " << op_name(m.insts[static_cast<std::size_t>(s)].op) << "\n";
         }

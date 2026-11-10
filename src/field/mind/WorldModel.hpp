@@ -32,6 +32,8 @@ class WorldModel {
 public:
     WorldModel(const Law& law, int creature);
     ~WorldModel();
+    // The law it reads (the plan line, live params) moved, with the solver that owns it: read this one from now on.
+    void rebind(const Law& law) { law_ = &law; }
     WorldModel(const WorldModel&) = delete;
     WorldModel& operator=(const WorldModel&) = delete;
 
@@ -70,7 +72,7 @@ private:
     void normalise();
     void rollout_cpu(const float* obs, std::uint32_t id, std::uint64_t tick, std::vector<float>& mean);
 
-    const Law& law_;
+    const Law* law_;
     int def_ = -1;
     int locals_ = 0;
     int features_ = 0;

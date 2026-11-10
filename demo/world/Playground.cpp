@@ -1603,6 +1603,7 @@ void Playground::plan_minds()
         if (mind == nullptr) {
             continue;
         }
+        mind->rebind(law); // the Playground (and its solver's law) may have moved since the mind was made
         const CreatureDef& def = law.creatures[d];
         const auto every = static_cast<std::uint64_t>(std::max(1.0, std::round(def.plan_dt / kTick)));
         if (tick_ % every != 0) {
