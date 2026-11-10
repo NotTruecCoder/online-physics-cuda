@@ -218,6 +218,28 @@ extern "C" __global__ void k_clamp(int field, float lo, float hi)
 }
 
 // The ring to and from the host's linear order.
+// The bounds of one field, for lazy readback: floats as ordered keys, so min and max are integer atomics and the
+// answer does not depend on the order (out: the field's min key at `field`, its max key at `fields + field`).
+__device__ __forceinline__ unsigned order_key(float v)
+{
+    const unsigned b = __float_as_uint(v);
+    return (b & 0x80000000u) ? ~b : (b | 0x80000000u);
+}
+extern "C" __global__ void k_bounds(int field, unsigned* out, int fields)
+{
+    unsigned lo = 0xffffffffu, hi = 0u;
+    const float* v = FT[field].now;
+    for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < G.cells; i += gridDim.x * blockDim.x) {
+        const unsigned k = order_key(v[i]);
+        lo = min(lo, k); hi = max(hi, k);
+    }
+    for (int o = 16; o > 0; o >>= 1) {
+        lo = min(lo, __shfl_xor_sync(0xffffffffu, lo, o));
+        hi = max(hi, __shfl_xor_sync(0xffffffffu, hi, o));
+    }
+    if ((threadIdx.x & 31) == 0) { atomicMin(out + field, lo); atomicMax(out + fields + field, hi); }
+}
+
 extern "C" __global__ void k_linearize(int field)
 {
     CELL_HEAD

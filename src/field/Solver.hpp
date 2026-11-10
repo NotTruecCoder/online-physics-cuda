@@ -31,6 +31,7 @@ public:
     // Mutable access assumes every field is about to change; edit_cell says exactly which plane will.
     [[nodiscard]] FieldSet& fields()
     {
+        fetch_all();
         edits_.all = true;
         return fields_;
     }
@@ -38,7 +39,17 @@ public:
     // The window moved by (dx, dy, dz) cells: the caller slides the cells (what is now at c was at c + d) and fills
     // `arriving`. A backend that keeps a ring only uploads those boxes.
     [[nodiscard]] FieldSet& shift_window(int dx, int dy, int dz, const std::vector<CellBox>& arriving);
-    [[nodiscard]] const FieldSet& fields() const { return fields_; }
+    [[nodiscard]] const FieldSet& fields() const
+    {
+        fetch_all();
+        return fields_;
+    }
+    // One field's cells, fetching only that field when the readback is lazy.
+    [[nodiscard]] const std::vector<float>& values(int field) const;
+    // On a GPU, steps leave their results on the card until something reads them (fields(), values()): a step then
+    // moves a few numbers a field to the host, not the lattice. Off (the default) every changed field comes back.
+    void set_lazy_readback(bool on);
+    [[nodiscard]] bool lazy_readback() const { return lazy_; }
     [[nodiscard]] const Law& law() const { return law_; }
     [[nodiscard]] int field(std::string_view name) const { return law_.field_id(name); }
 
@@ -91,8 +102,13 @@ private:
     void update_all_zero();
     void update_bounds(int id);
 
+    void fetch_all() const;
+    void fetch(const std::vector<char>& which) const;
+
     Law law_;
-    FieldSet fields_;
+    mutable FieldSet fields_; // with lazy readback a const read may first bring the card's cells here
+    mutable std::vector<char> stale_; // per field: the card has newer cells than fields_
+    bool lazy_ = false;
     std::vector<Violation> violations_;
     std::vector<int> substeps_;
     std::vector<std::vector<float>> deltas_;

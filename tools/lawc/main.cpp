@@ -217,6 +217,7 @@ int main(int argc, char** argv)
                 return std::nullopt;
             }
             solver.check_contracts_every(1);
+            solver.set_lazy_readback(true); // the cells come back when they are dumped or compared, not every step
         }
         return solver;
     };

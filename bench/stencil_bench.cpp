@@ -19,6 +19,7 @@
 #include "field/Solver.hpp"
 #include "field/cuda/CudaApi.hpp"
 
+#include <utility>
 #include <algorithm>
 #include <chrono>
 #include <cmath>
@@ -207,7 +208,8 @@ int main(int argc, char** argv)
         const double hand_med = median(hand_ms);
 
         // ---- the engine -----------------------------------------------------------------------------------------
-        auto run_engine = [&](int check_every, std::vector<float>* result, double& card_ms, double& step_ms, double& down_ms) {
+        auto run_engine = [&](int check_every, bool lazy, int count, double& card_ms, double& step_ms, double& down_ms,
+                              std::vector<double>* walls) {
 #ifdef _WIN32
             _putenv_s("FIELD_BACKEND", "cuda");
 #else
@@ -222,10 +224,11 @@ int main(int argc, char** argv)
                 return false;
             }
             solver.check_contracts_every(check_every);
+            solver.set_lazy_readback(lazy);
             std::vector<double> card;
             std::vector<double> wall;
             std::vector<double> down;
-            for (int r = 0; r < steps + 3; ++r) {
+            for (int r = 0; r < count + 3; ++r) {
                 const auto t0 = std::chrono::steady_clock::now();
                 solver.step(dt);
                 const double ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
@@ -238,8 +241,8 @@ int main(int argc, char** argv)
             card_ms = median(card);
             step_ms = median(wall);
             down_ms = median(down);
-            if (result) {
-                *result = std::as_const(solver).fields().values(solver.field("T"));
+            if (walls) {
+                *walls = wall;
             }
             return true;
         };
@@ -249,10 +252,19 @@ int main(int argc, char** argv)
         double eng_wall_nc = 0.0;
         double down_ms = 0.0;
         double down_nc = 0.0;
+        double lazy_card = 0.0;
+        double lazy_wall = 0.0;
+        double lazy_down = 0.0;
+        std::vector<double> tails;
         std::vector<float> engine_result;
-        if (!run_engine(1, nullptr, eng_card, eng_wall, down_ms) || !run_engine(1000000, nullptr, eng_card_nc, eng_wall_nc, down_nc)) {
+        // The tails: many steps with lazy readback and no contracts, so a step is what the card and the launches cost.
+        const int tail_steps = std::max(steps, n >= 256 ? 1000 : 3000);
+        if (!run_engine(1, false, steps, eng_card, eng_wall, down_ms, nullptr) || !run_engine(1000000, false, steps, eng_card_nc, eng_wall_nc, down_nc, nullptr) ||
+            !run_engine(1000000, true, tail_steps, lazy_card, lazy_wall, lazy_down, &tails)) {
             return 1;
         }
+        std::sort(tails.begin(), tails.end());
+        const auto pct = [&](double q) { return tails[std::min(tails.size() - 1, static_cast<std::size_t>(q * static_cast<double>(tails.size())))]; };
         // The same number of steps as the handwritten run, for the comparison of values.
         {
 #ifdef _WIN32
@@ -265,10 +277,11 @@ int main(int argc, char** argv)
             solver.fields().values(solver.field("T")) = start;
             std::string reason;
             solver.use_gpu(reason);
+            solver.set_lazy_readback(true); // the cells come back once, when read: this checks the fetch too
             for (int r = 0; r < steps; ++r) {
                 solver.step(dt);
             }
-            engine_result = std::as_const(solver).fields().values(solver.field("T"));
+            engine_result = std::as_const(solver).values(solver.field("T"));
         }
         double worst = 0.0;
         for (std::size_t i = 0; i < cells; ++i) {
@@ -297,11 +310,16 @@ int main(int argc, char** argv)
         const double mcells = static_cast<double>(cells) / 1e6;
         std::cerr << "n=" << n << ": copy " << copy_gbs << " GB/s; handwritten " << hand_med << " ms (" << 8.0 * cells / (hand_med * 1e6)
                   << " GB/s of 8 B/cell); engine term " << eng_card << " ms with contracts, " << eng_card_nc << " ms without; step "
-                  << eng_wall << " ms, of it readback " << down_ms << " ms; CPU " << cpu_ms << " ms; |engine - handwritten| " << worst << " K\n";
+                  << eng_wall << " ms, of it readback " << down_ms << " ms; lazy readback step " << lazy_wall << " ms (p50 " << pct(0.5)
+                  << ", p99 " << pct(0.99) << ", p99.9 " << pct(0.999) << " of " << tails.size() << "); CPU " << cpu_ms
+                  << " ms; |engine - handwritten| " << worst << " K\n";
         json << (si ? "," : "") << "{\"n\":" << n << ",\"cells\":" << cells << ",\"copy_gbs\":" << copy_gbs << ",\"hand_ms\":" << hand_med
              << ",\"hand_gbs_8b\":" << 8.0 * cells / (hand_med * 1e6) << ",\"engine_card_ms\":" << eng_card
              << ",\"engine_card_ms_no_contracts\":" << eng_card_nc << ",\"engine_step_ms\":" << eng_wall
-             << ",\"engine_step_ms_no_contracts\":" << eng_wall_nc << ",\"engine_readback_ms\":" << down_ms << ",\"cpu_ms\":" << cpu_ms
+             << ",\"engine_step_ms_no_contracts\":" << eng_wall_nc << ",\"engine_readback_ms\":" << down_ms
+             << ",\"lazy_step_ms\":" << lazy_wall << ",\"lazy_card_ms\":" << lazy_card << ",\"lazy_p50_ms\":" << pct(0.5)
+             << ",\"lazy_p99_ms\":" << pct(0.99) << ",\"lazy_p999_ms\":" << pct(0.999) << ",\"lazy_max_ms\":" << tails.back()
+             << ",\"tail_steps\":" << tails.size() << ",\"cpu_ms\":" << cpu_ms
              << ",\"mcells_per_s_hand\":" << mcells / (hand_med * 1e-3) << ",\"mcells_per_s_engine_card\":" << mcells / (eng_card_nc * 1e-3)
              << ",\"max_abs_diff_K\":" << worst << "}";
     }

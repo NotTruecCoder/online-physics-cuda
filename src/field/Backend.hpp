@@ -74,6 +74,10 @@ public:
     // The contracts cost as much as a good part of the law: look at them in one step of so many. (Gates look at every
     // one; a guarded learned term is always looked at.)
     virtual void check_contracts_every(int steps) = 0;
+    // LAZY READBACK. On, a step leaves what changed on the card: the bounds the idle-term test needs are worked out
+    // there, and `fields` is filled only by fetch(), for the fields asked for. A backend that cannot keeps copying.
+    virtual void set_lazy(bool on) { (void)on; }
+    virtual void fetch(FieldSet& fields, const std::vector<char>& which) { (void)fields; (void)which; }
     [[nodiscard]] virtual const std::string& adapter() const = 0;
     [[nodiscard]] virtual const char* api() const = 0;
     [[nodiscard]] virtual const StepProfile& profile() const = 0;

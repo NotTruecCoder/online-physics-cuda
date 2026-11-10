@@ -103,8 +103,47 @@ void Solver::update_all_zero()
     }
 }
 
+void Solver::fetch(const std::vector<char>& which) const
+{
+    if (!gpu_) {
+        return;
+    }
+    gpu_->fetch(fields_, which);
+    for (std::size_t f = 0; f < which.size() && f < stale_.size(); ++f) {
+        stale_[f] = which[f] ? 0 : stale_[f];
+    }
+}
+
+void Solver::fetch_all() const
+{
+    if (std::any_of(stale_.begin(), stale_.end(), [](char c) { return c != 0; })) {
+        fetch(stale_);
+    }
+}
+
+const std::vector<float>& Solver::values(int field) const
+{
+    const auto f = static_cast<std::size_t>(field);
+    if (f < stale_.size() && stale_[f]) {
+        std::vector<char> one(stale_.size(), 0);
+        one[f] = 1;
+        fetch(one);
+    }
+    return fields_.values(field);
+}
+
+void Solver::set_lazy_readback(bool on)
+{
+    fetch_all();
+    lazy_ = on;
+    if (gpu_) {
+        gpu_->set_lazy(on);
+    }
+}
+
 float& Solver::edit_cell(int field, std::size_t cell)
 {
+    (void)values(field);
     if (gpu_ && !edits_.all) {
         edits_.planes.resize(fields_.count());
         std::vector<char>& planes = edits_.planes[static_cast<std::size_t>(field)];
@@ -117,6 +156,7 @@ float& Solver::edit_cell(int field, std::size_t cell)
 
 bool Solver::use_gpu(std::string& why)
 {
+    fetch_all();
     edits_.all = true;
     const char* forced = std::getenv("FIELD_BACKEND");
     const std::string want = forced != nullptr ? forced : "";
@@ -145,6 +185,7 @@ bool Solver::use_gpu(std::string& why)
 
 FieldSet& Solver::shift_window(int dx, int dy, int dz, const std::vector<CellBox>& arriving)
 {
+    fetch_all();
     if (gpu_ && !edits_.all) {
         const bool planes = std::any_of(edits_.planes.begin(), edits_.planes.end(), [](const std::vector<char>& p) {
             return std::any_of(p.begin(), p.end(), [](char c) { return c != 0; });
@@ -182,7 +223,11 @@ void Solver::check_contracts_every(int steps)
 void Solver::refresh_derived()
 {
     if (gpu_) {
+        fetch_all();
         gpu_->derive(law_, fields_, edits_, changed_);
+        if (lazy_) {
+            stale_ = changed_;
+        }
         return;
     }
     changed_.assign(fields_.count(), 1);
@@ -214,6 +259,12 @@ void Solver::step(double dt)
     violations_.clear();
     if (gpu_) {
         gpu_->step(dt, respect_max_dt_, learned_, law_, fields_, edits_, changed_, violations_, substeps_);
+        if (lazy_) {
+            stale_.resize(changed_.size(), 0);
+            for (std::size_t f = 0; f < changed_.size(); ++f) {
+                stale_[f] = stale_[f] || changed_[f];
+            }
+        }
         return;
     }
     using clock = std::chrono::steady_clock;

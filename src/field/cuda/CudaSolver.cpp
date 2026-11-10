@@ -74,6 +74,9 @@ public:
     // device's FT table.
     struct FieldPair { CUdeviceptr now; CUdeviceptr next; };
     Buffer spare;
+    Buffer bounds_keys; // lazy readback: 2 words a field
+    bool lazy = false;
+    std::vector<char> on_card; // lazy: the card's cells are newer than the host's
     std::vector<FieldPair> pairs;
     CUdeviceptr table_symbol = 0;
     Pinned pinned;
@@ -191,6 +194,7 @@ public:
             NF.allocate(4 * static_cast<std::size_t>(lay.net_words)) &&
             F.allocate(4 * static_cast<std::size_t>(std::max(lay.flags, 1))) &&
             snapshot.allocate(4 * n * writes_most) &&
+            bounds_keys.allocate(8 * static_cast<std::size_t>(fields_n)) &&
             pinned.allocate(4 * n * static_cast<std::size_t>(std::min(fields_n, kGroup)));
         if (!ok) {
             why = "could not allocate the lattice on " + name;
@@ -929,6 +933,66 @@ public:
             }
         }
         changed_out = touched;
+        if (lazy) {
+            // The bounds come back, not the cells: 8 bytes a field that moved.
+            on_card.resize(fields.count(), 0);
+            const Api& a = dev->api;
+            a.cuMemsetD32Async(bounds_keys.ptr(), 0xffffffffu, static_cast<std::size_t>(fields_n), dev->stream);
+            a.cuMemsetD32Async(bounds_keys.ptr() + 4ull * static_cast<std::size_t>(fields_n), 0u, static_cast<std::size_t>(fields_n), dev->stream);
+            CUdeviceptr out = bounds_keys.ptr();
+            int count = fields_n;
+            for (int field : moved) {
+                launch(fn("k_bounds"), static_cast<unsigned>(std::max(dev->sms, 1) * 8), 1, 1, 256, 1, 1, 0, {&field, &out, &count});
+                ++profile_.launches;
+                on_card[static_cast<std::size_t>(field)] = 1;
+            }
+            std::vector<std::uint32_t> keys(2 * static_cast<std::size_t>(fields_n));
+            a.cuMemcpyDtoHAsync(keys.data(), bounds_keys.ptr(), keys.size() * 4, dev->stream);
+            a.cuStreamSynchronize(dev->stream);
+            const auto value = [](std::uint32_t k) {
+                const std::uint32_t b = (k & 0x80000000u) ? (k & 0x7fffffffu) : ~k;
+                float f = 0.0f;
+                std::memcpy(&f, &b, 4);
+                return f;
+            };
+            for (int field : moved) {
+                const auto f = static_cast<std::size_t>(field);
+                const float lo = value(keys[f]);
+                const float hi = value(keys[static_cast<std::size_t>(fields_n) + f]);
+                known[f] = Bounds{lo, hi};
+                known_zero[f] = lo == 0.0f && hi == 0.0f ? 1 : 0;
+            }
+            profile_.download_bytes += keys.size() * 4;
+            profile_.download_ms = elapsed(start, event());
+            return;
+        }
+        copy_back(fields, moved, true);
+        profile_.download_ms = elapsed(start, event());
+    }
+
+    void set_lazy(bool on) override
+    {
+        lazy = on;
+    }
+
+    void fetch(FieldSet& fields, const std::vector<char>& which) override
+    {
+        const std::lock_guard<std::mutex> lock(device_mutex());
+        dev->bind();
+        std::vector<int> wanted;
+        for (std::size_t f = 0; f < which.size() && f < on_card.size(); ++f) {
+            if (which[f] && on_card[f]) {
+                wanted.push_back(static_cast<int>(f));
+                on_card[f] = 0;
+            }
+        }
+        copy_back(fields, wanted, false);
+    }
+
+    // These fields' cells from the card into `fields` (through pinned memory, a group of fields at a time); with
+    // `look`, their bounds from the copies.
+    void copy_back(FieldSet& fields, const std::vector<int>& moved, bool look)
+    {
         const std::size_t bytes = static_cast<std::size_t>(cells) * 4;
         for (std::size_t first = 0; first < moved.size(); first += kGroup) {
             const std::size_t end = std::min(moved.size(), first + kGroup);
@@ -949,11 +1013,12 @@ public:
                 const int field = moved[static_cast<std::size_t>(k)];
                 const float* from = reinterpret_cast<const float*>(static_cast<char*>(pinned.data()) + (static_cast<std::size_t>(k) - first) * bytes);
                 std::memcpy(fields.values(field).data(), from, bytes);
-                look_over(field, from);
+                if (look) {
+                    look_over(field, from);
+                }
             }
             profile_.download_bytes += (end - first) * bytes;
         }
-        profile_.download_ms = elapsed(start, event());
     }
 
     // ---- LawBackend ------------------------------------------------------------------------------------------------
