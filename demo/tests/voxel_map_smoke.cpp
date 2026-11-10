@@ -983,50 +983,58 @@ void check_vertical_window(const TerrainConfig& t)
     check(std::abs(landed.z - home.z) < 1.0 && world->player().grounded, "7: you land on the ground you left it above");
     check(world->violations().empty(), "7: no contract broke");
 
-    // What is written while the window moves up or down lands where it was written.
-    std::optional<Playground> threaded = make_world(3, true);
-    for (int tick = 0; tick < 12; ++tick) {
-        threaded->step(Control{});
-    }
-    const Pour* water = nullptr;
-    for (const Pour& s : threaded->pours()) {
-        water = s.field == "mana_water" || s.name == "water" ? &s : water;
-    }
-    const std::string field = water->field;
-    threaded->player().position = threaded->player().position + Vec3{0.0, 0.0, 30.0};
-    double lowest_wrong = 0.0;
-    int layers_moved = 0;
-    int last_layer = threaded->window_cz();
-    const int mana = threaded->fields().find(field);
-    for (int tick = 0; tick < 60 * 3; ++tick) {
-        const Vec3 at_you = threaded->player().position;
-        threaded->pour(*water, at_you, Vec3{1.0, 0.0, 0.0});
-        threaded->step(Control{});
-        layers_moved += threaded->window_cz() != last_layer ? 1 : 0;
-        last_layer = threaded->window_cz();
-    }
-    // None of it is far from the line you fell along: a pour taken up in the old lattice's cells would be a chunk off.
-    {
-        threaded->step(Control{});
-        const FieldSet& f = threaded->fields();
+    // What is written while the window moves up or down lands where it was written: poured on every tick of a fall
+    // with the law on its own thread, it ends where the same pours end with the law on the caller's thread. Water
+    // flows downhill after it lands, so "where you landed" is not the reference; the synchronous world is. A pour
+    // taken up in the old lattice's cells would be a window layer (8 m) off.
+    const auto pour_while_falling = [](bool async, int& layers_moved) {
+        std::optional<Playground> w = make_world(3, async);
+        for (int tick = 0; tick < 12; ++tick) {
+            w->step(Control{});
+        }
+        const Pour* water = nullptr;
+        for (const Pour& s : w->pours()) {
+            water = s.field == "mana_water" || s.name == "water" ? &s : water;
+        }
+        const std::string field = water->field;
+        w->player().position = w->player().position + Vec3{0.0, 0.0, 30.0};
+        layers_moved = 0;
+        int last_layer = w->window_cz();
+        for (int tick = 0; tick < 60 * 3; ++tick) {
+            w->pour(*water, w->player().position + Vec3{4.0, 0.0, 0.0}, Vec3{1.0, 0.0, 0.0});  // beside you: a pour under you would lift you
+            w->step(Control{});
+            layers_moved += w->window_cz() != last_layer ? 1 : 0;
+            last_layer = w->window_cz();
+        }
+        w->step(Control{});
+        // The world height of the lowest wet cell and of the wet mass's centre.
+        const FieldSet& f = w->fields();
         const GridShape& g = f.shape();
-        const Vec3 you = threaded->player().position;
-        const std::vector<float>& v = f.values(mana);
-        const double top = you.z;
+        const std::vector<float>& v = f.values(f.find(field));
+        double lowest = 1e30, mass = 0.0, mz = 0.0;
         for (int z = 0; z < g.nz; ++z) {
             for (int y = 0; y < g.ny; ++y) {
                 for (int x = 0; x < g.nx; ++x) {
-                    const double wz = (z + 0.5) * g.cell;
-                    if (v[g.index(x, y, z)] > 0.05f && wz < top - 3.0) {
-                        lowest_wrong = std::max(lowest_wrong, top - wz);
+                    const float m = v[g.index(x, y, z)];
+                    if (m > 0.05f) {
+                        const double wz = (z + 0.5) * g.cell + w->origin().z;
+                        lowest = std::min(lowest, wz);
+                        mass += m;
+                        mz += m * wz;
                     }
                 }
             }
         }
-    }
-    std::cout << "  poured while falling: " << layers_moved << " layer moves, at most " << lowest_wrong << " m under where you landed\n";
-    check(layers_moved > 0, "7: the window moved while it was being written to");
-    check(lowest_wrong < 2.0, "7: and nothing landed under the ground");
+        return std::pair<double, double>{lowest, mass > 0.0 ? mz / mass : 0.0};
+    };
+    int moved_async = 0;
+    int moved_sync = 0;
+    const auto [low_async, centre_async] = pour_while_falling(true, moved_async);
+    const auto [low_sync, centre_sync] = pour_while_falling(false, moved_sync);
+    std::cout << "  poured while falling: " << moved_async << " layer moves; lowest water " << low_async - low_sync
+              << " m and its centre " << centre_async - centre_sync << " m from the synchronous world\n";
+    check(moved_async > 0, "7: the window moved while it was being written to");
+    check(std::abs(low_async - low_sync) < 2.0 && std::abs(centre_async - centre_sync) < 2.0, "7: and what was poured lands where it does without the thread");
 }
 
 void check_far_life(const TerrainConfig& t, const WorldMap& map)

@@ -18,6 +18,7 @@
 #include "tests/Gate.hpp"
 
 #include <algorithm>
+#include <chrono>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
@@ -74,9 +75,13 @@ int floor_div(int a, int b) { return a >= 0 ? a / b : -((-a + b - 1) / b); }
 
 int main(int argc, char** argv)
 {
+    // With arguments, only the sections named: ball (1, 2), people (3, 4), view (5); "debug" traces the ball.
     const std::string only = argc > 1 ? argv[1] : "";
+    const auto wanted = [&](const char* name) { return only.empty() || only == name || (only == "debug" && std::string(name) == "ball"); };
+    const auto clock_start = std::chrono::steady_clock::now();
+    const auto seconds = [&] { return std::chrono::duration<double>(std::chrono::steady_clock::now() - clock_start).count(); };
     // ---- 1 and 2. a ball out past the edge, and a ray -------------------------------------------------------------------
-    {
+    if (wanted("ball")) {
         std::optional<Playground> made = make_world(false);
         if (!made) {
             return fieldengine::gate::report("voxel_beyond");
@@ -183,11 +188,9 @@ int main(int argc, char** argv)
         check(w.violations().empty(), "1: no contract broken");
     }
 
-    if (!only.empty()) {
-        return fieldengine::gate::report("voxel_beyond");
-    }
+    std::cout << "  [" << seconds() << " s]\n";
     // ---- 3 and 4. people beyond the window ------------------------------------------------------------------------------
-    {
+    if (wanted("people")) {
         std::optional<Playground> made = make_world(true);
         if (!made || made->society() == nullptr) {
             check(false, "3: the open world has people");
@@ -286,8 +289,9 @@ int main(int argc, char** argv)
         check(became >= 1, "4: a person the window comes to is a body where its day had it");
     }
 
+    std::cout << "  [" << seconds() << " s]\n";
     // ---- 5. the live window drawn whole over coarser regions -----------------------------------------------------------
-    {
+    if (wanted("view")) {
         std::optional<Playground> made = make_world(false);
         if (!made) {
             return fieldengine::gate::report("voxel_beyond");
@@ -302,14 +306,23 @@ int main(int argc, char** argv)
         view.centre_x = (w.window_cx() + w.window_chunks() * 0.5) * chunk_m;
         view.centre_y = (w.window_cy() + w.window_chunks() * 0.5) * chunk_m;
         view.radius_metres = 100.0;
+        // What a camera would see: the disc of that radius. With no `visible` the mesher takes everything to be on
+        // screen and builds the whole continent (6.5 M regions; this gate ran for most of an hour on it).
+        view.visible = [&](const double lo[3], const double hi[3]) {
+            const double dx = std::max({lo[0] - view.centre_x, 0.0, view.centre_x - hi[0]});
+            const double dy = std::max({lo[1] - view.centre_y, 0.0, view.centre_y - hi[1]});
+            return dx * dx + dy * dy <= view.radius_metres * view.radius_metres;
+        };
         view.stamp = 1;
         int next_handle = 0;
         const auto upload = [&](int handle, const ChunkMesh&) { return handle >= 0 ? handle : next_handle++; };
         const auto destroy = [](int) {};
-        for (int k = 0; k < 2000 && !mesher.settled(); ++k) {
+        int updates = 0;
+        for (int k = 0; k < 2000 && !mesher.settled(); ++k, ++updates) {
             w.step(Control{});
             mesher.update(w, view, upload, destroy);
         }
+        std::cout << "  the view settled after " << updates << " updates [" << seconds() << " s]\n";
         check(mesher.settled(), "5: the view settles");
         check(mesher.stats().level >= 1 && mesher.live_overlay(), "5: zoomed out, the live window is drawn over coarser regions");
         std::set<std::pair<int, int>> fine;
