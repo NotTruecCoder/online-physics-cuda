@@ -120,6 +120,7 @@ private:
     render::Camera camera_;
     long frames_left_ = -1; // SANDBOX_FRAMES=<n>: quit after n frames (a launch check)
     std::string shot_path_; // SANDBOX_SHOT=<path.tga>: and capture the screen before that
+    std::string gif_dir_;   // SANDBOX_GIF=<dir>: with SANDBOX_DEMO, the law panel open, a param changed live, frames saved
 
     std::optional<field::Playground> world_;
     std::future<bool> loading_;

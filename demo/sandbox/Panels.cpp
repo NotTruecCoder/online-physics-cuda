@@ -259,8 +259,13 @@ void Sandbox::render_law_panel()
 {
     field::Playground& world = *world_;
     const field::Law& law = world.law();
-    ImGui::SetNextWindowSize(ImVec2(620.0f, 560.0f), ImGuiCond_FirstUseEver);
-    ImGui::SetNextWindowPos(ImVec2(330.0f, 60.0f), ImGuiCond_FirstUseEver);
+    if (gif_dir_.empty()) {
+        ImGui::SetNextWindowSize(ImVec2(620.0f, 560.0f), ImGuiCond_FirstUseEver);
+        ImGui::SetNextWindowPos(ImVec2(330.0f, 60.0f), ImGuiCond_FirstUseEver);
+    } else { // a capture: small, out of the way of the picture
+        ImGui::SetNextWindowSize(ImVec2(470.0f, 190.0f), ImGuiCond_Always);
+        ImGui::SetNextWindowPos(ImVec2(ImGui::GetIO().DisplaySize.x - 490.0f, ImGui::GetIO().DisplaySize.y - 300.0f), ImGuiCond_Always);
+    }
     ImGui::Begin("The law (assets/law/*.law)", &show_law_);
     ImGui::InputText("filter", law_filter_, sizeof(law_filter_));
     const std::string filter = law_filter_;

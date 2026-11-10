@@ -70,6 +70,11 @@ bool Sandbox::initialize()
     if (const char* shot = std::getenv("SANDBOX_SHOT")) {
         shot_path_ = shot;
     }
+    if (const char* gif = std::getenv("SANDBOX_GIF")) {
+        gif_dir_ = gif;
+        show_law_ = true;
+        std::snprintf(law_filter_, sizeof(law_filter_), "%s", "water");
+    }
 
     IMGUI_CHECKVERSION();
     ImGui::CreateContext();
@@ -232,6 +237,11 @@ void Sandbox::frame()
     imgui_bgfx_.render(ImGui::GetDrawData(), 255);
     renderer_.present();
 
+    if (!gif_dir_.empty() && world_ && demo_frame_ > 0 && demo_frame_ % 4 == 0 && frames_left_ > 3) {
+        char name[32];
+        std::snprintf(name, sizeof(name), "/frame_%05d.tga", demo_frame_);
+        renderer_.request_screenshot(gif_dir_ + name);
+    }
     if (frames_left_ > 0) {
         if (!shot_path_.empty() && frames_left_ == 3) {
             renderer_.request_screenshot(shot_path_); // bgfx writes it a frame or two later
@@ -659,6 +669,16 @@ void Sandbox::demo_turn()
     }
     if (demo_frame_ == 200) {
         if (const std::optional<field::Vec3> hit = ground(3.0, -6.0)) {
+            world.pour_at(world.pour_slot("flood"), *hit + field::Vec3{0.0, 0.0, 1.0}, field::Vec3{1.0, 0.0, 0.0});
+        }
+    }
+    // For the GIF: the param that levels water out is turned down fifteenfold, as a drag in F1 does, and a second
+    // flood stands where the first spread flat.
+    if (!gif_dir_.empty() && demo_frame_ == 330) {
+        world.set_param("water_level", 0.02);
+    }
+    if (!gif_dir_.empty() && demo_frame_ == 360) {
+        if (const std::optional<field::Vec3> hit = ground(-4.0, 5.0)) {
             world.pour_at(world.pour_slot("flood"), *hit + field::Vec3{0.0, 0.0, 1.0}, field::Vec3{1.0, 0.0, 0.0});
         }
     }
