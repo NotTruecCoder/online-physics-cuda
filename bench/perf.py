@@ -69,14 +69,17 @@ def main():
     s = out["stencil"]
     md = [f"# Performance and parity\n\nCard: {s['card']} (sm_{s['sm']}). Medians over {s['steps']} steps.\n\n",
           "One conduction term (`d T = diffuse(k, T)`, conserves T, a range) on N³, times on the card:\n\n",
-          "| N³ | copy GB/s | handwritten ms (GB/s at 8 B/cell) | engine ms, contracts off | engine ms, contracts on | engine step incl. readback ms | CPU ms | max abs diff engine vs handwritten |\n",
-          "|---|---|---|---|---|---|---|---|\n"]
+          "| N³ | copy GB/s | handwritten ms (GB/s at 8 B/cell) | engine ms, contracts off | engine ms, contracts on | step, every step read back | step, lazy readback: p50 / p99 / p99.9 | CPU ms | max abs diff engine vs handwritten |\n",
+          "|---|---|---|---|---|---|---|---|---|\n"]
     for r in s["sizes"]:
         md.append(f"| {r['n']}³ | {r['copy_gbs']:.0f} | {r['hand_ms']:.3f} ({r['hand_gbs_8b']:.0f}) | {r['engine_card_ms_no_contracts']:.3f} | "
-                  f"{r['engine_card_ms']:.3f} | {r['engine_step_ms']:.2f} | {r['cpu_ms']:.1f} | {r['max_abs_diff_K']:.1e} K |\n")
+                  f"{r['engine_card_ms']:.3f} | {r['engine_step_ms']:.2f} | {r['lazy_p50_ms']:.2f} / {r['lazy_p99_ms']:.2f} / {r['lazy_p999_ms']:.2f} "
+                  f"| {r['cpu_ms']:.1f} | {r['max_abs_diff_K']:.1e} K |\n")
+    md.append("\nThe first three are card time (CUDA events); the steps are wall time, the lazy ones over "
+              f"{s['sizes'][-1]['tail_steps']}+ steps with contracts off (the latency tail of a solver loop).\n")
     c, g = world["cpu"], world["cuda"]
     md.append(f"\nThe shipped world law (43 terms, 39 fields) on 144 × 144 × 48 (1 M cells), median step: CPU (OpenMP) {c['median_ms']:.1f} ms, "
-              f"CUDA {g['median_ms']:.1f} ms (incl. readback of the fields that changed) - {c['median_ms'] / g['median_ms']:.0f}x.\n\n")
+              f"CUDA {g['median_ms']:.1f} ms (lawc: lazy readback, contracts checked every step) - {c['median_ms'] / g['median_ms']:.0f}x.\n\n")
     md.append("What the learned operators cost on the card a step (sum of the terms' card time), against what they replace:\n\n"
               "| run | card ms a step |\n|---|---|\n")
     for name, ms in learned.items():
