@@ -12,6 +12,7 @@
 #include "field/cuda/CudaSolver.hpp"
 #include "field/nn/Net.hpp"
 
+#include <utility>
 #include <cmath>
 #include <cstdlib>
 #include <iostream>
