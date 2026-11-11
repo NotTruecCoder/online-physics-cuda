@@ -77,6 +77,9 @@ def main():
             print(f"{backend}: diffusion L2 {['%.2e' % e for e in d['l2']]} orders {['%.2f' % o for o in d['order']]}; "
                   f"drift of the total {max(d['relative_total_drift']):.1e}")
             print(f"{backend}: advection L2 {['%.2e' % e for e in a['l2']]} orders {['%.2f' % o for o in a['order']]}")
+            # The schemes' promises, at the finest refinement: flux-form diffusion order 2, upwind order 1.
+            assert d["order"][-1] > 1.8, f"{backend}: diffusion order {d['order']}"
+            assert a["order"][-1] > 0.8, f"{backend}: advection order {a['order']}"
 
     md.append("| problem | backend | lattice | L2 error | observed order |\n|---|---|---|---|---|\n")
     for key, r in results.items():

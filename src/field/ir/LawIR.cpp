@@ -405,7 +405,6 @@ void finish_program(const Module& m, Program& p)
     std::map<int, int> offsets;
     for (const Equation& eq : p.equations) {
         reach(m, eq.value, 0, true, offsets);
-        // The equation itself a stage: the kernel reads only its stored value.
     }
     p.in_place = true;
     for (const int t : p.writes) {
@@ -413,10 +412,6 @@ void finish_program(const Module& m, Program& p)
         if (found != offsets.end() && found->second > 0) {
             p.in_place = false; // another cell's thread may already have written what this one reads
         }
-    }
-    for (const Equation& eq : p.equations) {
-        // A stage read at its own cell is safe; but a stage *equation* is stored, so the root is read at offset 0.
-        (void)eq;
     }
 }
 

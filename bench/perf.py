@@ -30,12 +30,14 @@ def main():
         out["stencil"] = json.load(f)
 
     world = {}
-    for backend in ("cpu", "cuda"):
+    # cuda: lazy readback (the cells stay on the card); cuda_eager: every changed field back every step, as the
+    # sandbox runs it (its mesher reads them).
+    for key, backend, extra in (("cpu", "cpu", ()), ("cuda", "cuda", ()), ("cuda_eager", "cuda", ("--eager",))):
         j = lawc_json("--scene", "assets/scenes/window.scene", "--steps", "8" if backend == "cpu" else "40", "--warmup", "2" if backend == "cpu" else "5",
-                      "--dt", "0.25", "--backend", backend)
-        world[backend] = j
+                      "--dt", "0.25", "--backend", backend, *extra)
+        world[key] = j
         top = sorted(j["terms"].items(), key=lambda kv: -kv[1])[:5]
-        print(f"world law on {backend}: median step {j['median_ms']:.2f} ms; most expensive terms {[(k, round(v, 3)) for k, v in top]}")
+        print(f"world law on {key}: median step {j['median_ms']:.2f} ms; most expensive terms {[(k, round(v, 3)) for k, v in top]}")
     out["world"] = world
 
     # ---- what the learned operators cost on the card, against what they replace ------------------------------------
@@ -77,9 +79,12 @@ def main():
                   f"| {r['cpu_ms']:.1f} | {r['max_abs_diff_K']:.1e} K |\n")
     md.append("\nThe first three are card time (CUDA events); the steps are wall time, the lazy ones over "
               f"{s['sizes'][-1]['tail_steps']}+ steps with contracts off (the latency tail of a solver loop).\n")
-    c, g = world["cpu"], world["cuda"]
-    md.append(f"\nThe shipped world law (43 terms, 39 fields) on 144 × 144 × 48 (1 M cells), median step: CPU (OpenMP) {c['median_ms']:.1f} ms, "
-              f"CUDA {g['median_ms']:.1f} ms (lawc: lazy readback, contracts checked every step) - {c['median_ms'] / g['median_ms']:.0f}x.\n\n")
+    c, g, e = world["cpu"], world["cuda"], world["cuda_eager"]
+    md.append(f"\nThe shipped world law (43 terms, 39 fields) on 144 × 144 × 48 (1 M cells), median step, contracts checked every "
+              f"step: CPU (OpenMP) {c['median_ms']:.1f} ms; CUDA {g['median_ms']:.1f} ms with lazy readback (the cells stay on the "
+              f"card: {c['median_ms'] / g['median_ms']:.0f}x), {e['median_ms']:.1f} ms with every changed field read back every step, as "
+              f"the sandbox runs it ({c['median_ms'] / e['median_ms']:.0f}x). One run of each; the CPU's step moves with the "
+              "laptop's clocks (300-410 ms seen across runs).\n\n")
     md.append("What the learned operators cost on the card a step (sum of the terms' card time), against what they replace:\n\n"
               "| run | card ms a step |\n|---|---|\n")
     for name, ms in learned.items():

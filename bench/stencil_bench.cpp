@@ -190,6 +190,7 @@ int main(int argc, char** argv)
         // ---- handwritten ----------------------------------------------------------------------------------------
         dev.api.cuMemcpyHtoDAsync(a.ptr(), start.data(), cells * 4, dev.stream);
         std::vector<double> hand_ms;
+        std::vector<double> hand_wall; // as the frameworks are timed: launch to synchronised, on the host's clock
         cu::CUdeviceptr in = a.ptr();
         cu::CUdeviceptr out = b.ptr();
         for (int r = 0; r < steps; ++r) {
@@ -197,15 +198,19 @@ int main(int argc, char** argv)
             int ny = n;
             int nz = n;
             float cv = c;
+            const auto t0 = std::chrono::steady_clock::now();
             ev.begin();
             cu::launch(heat, static_cast<unsigned>((n + 31) / 32), static_cast<unsigned>((n + 7) / 8), 1, 32, 8, 1, 0, {&in, &out, &nx, &ny, &nz, &cv});
             hand_ms.push_back(ev.end());
+            dev.api.cuStreamSynchronize(dev.stream);
+            hand_wall.push_back(std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count());
             std::swap(in, out);
         }
         std::vector<float> hand(cells);
         dev.api.cuMemcpyDtoHAsync(hand.data(), in, cells * 4, dev.stream);
         dev.api.cuStreamSynchronize(dev.stream);
         const double hand_med = median(hand_ms);
+        const double hand_wall_med = median(hand_wall);
 
         // ---- the engine -----------------------------------------------------------------------------------------
         auto run_engine = [&](int check_every, bool lazy, int count, double& card_ms, double& step_ms, double& down_ms,
@@ -314,6 +319,7 @@ int main(int argc, char** argv)
                   << ", p99 " << pct(0.99) << ", p99.9 " << pct(0.999) << " of " << tails.size() << "); CPU " << cpu_ms
                   << " ms; |engine - handwritten| " << worst << " K\n";
         json << (si ? "," : "") << "{\"n\":" << n << ",\"cells\":" << cells << ",\"copy_gbs\":" << copy_gbs << ",\"hand_ms\":" << hand_med
+             << ",\"hand_wall_ms\":" << hand_wall_med
              << ",\"hand_gbs_8b\":" << 8.0 * cells / (hand_med * 1e6) << ",\"engine_card_ms\":" << eng_card
              << ",\"engine_card_ms_no_contracts\":" << eng_card_nc << ",\"engine_step_ms\":" << eng_wall
              << ",\"engine_step_ms_no_contracts\":" << eng_wall_nc << ",\"engine_readback_ms\":" << down_ms

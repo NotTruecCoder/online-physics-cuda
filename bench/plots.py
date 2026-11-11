@@ -59,7 +59,7 @@ def convergence():
     rows = [("diffusion (exact solution)", v["diffusion_cuda"]["n"], v["diffusion_cuda"]["l2"]),
             ("upwind advection", v["advection_cuda"]["n"], v["advection_cuda"]["l2"]),
             ("Black-Scholes put (formula)", [r["n"] for r in f["european_cuda"]["rows"]], [r["rms"] for r in f["european_cuda"]["rows"]]),
-            ("Heston put (char. function)", [r["nx"] for r in f["heston"]["rows"]], [abs(r["err"]) for r in f["heston"]["rows"]])]
+            ("Heston put (char. function)", [r["nx"] for r in f["heston"]["heston"]["rows"]], [abs(r["err"]) for r in f["heston"]["heston"]["rows"]])]
     for i, (name, n, e) in enumerate(rows):
         ax.loglog(n, e, "o-", color=SERIES[i], label=name, zorder=3, markeredgecolor=SURFACE, markeredgewidth=1.5)
     slope_guide(ax, [16, 256], 4e-3, 2, "order 2")

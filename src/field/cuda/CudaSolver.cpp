@@ -29,9 +29,9 @@ struct GridHost {
     int nx, ny, nz, nxy, cells, ox, oy, oz;
     float h;
     int pad;
-    unsigned long long S, A, D, U, C, L, R, W, F, NF;
+    unsigned long long S, A, U, C, L, R, W, F, NF;
 };
-static_assert(sizeof(GridHost) == 120, "GridHost must match the device's Grid");
+static_assert(sizeof(GridHost) == 112, "GridHost must match the device's Grid");
 
 constexpr unsigned kBlockX = 32;
 constexpr unsigned kBlockY = 4;
@@ -69,7 +69,7 @@ public:
     CUdeviceptr grid_symbol = 0;
     CUdeviceptr param_symbol = 0;
     GridHost grid{};
-    Buffer S, A, D, U, C, L, R, W, NF, F, snapshot;
+    Buffer S, A, U, C, L, R, W, NF, F, snapshot;
     // Each field's buffer now and its other buffer (ping-pong; fields no program writes out of place have none), as the
     // device's FT table.
     struct FieldPair { CUdeviceptr now; CUdeviceptr next; };
@@ -81,6 +81,9 @@ public:
     static constexpr int kTightenEvery = 8; // lazy: steps between measured bounds of integrated fields
     std::vector<FieldPair> pairs;
     CUdeviceptr table_symbol = 0;
+    static constexpr int kTableSlots = 4096;
+    Pinned table_ring; // swap_fields' staging, kTableSlots entries
+    int next_slot = 0;
     Pinned pinned;
     std::vector<unsigned> changed_words;
     std::vector<float> params;
@@ -187,7 +190,6 @@ public:
         }
         const bool ok = S.allocate(4 * n * static_cast<std::size_t>(fields_n)) &&
             A.allocate(4 * n * static_cast<std::size_t>(std::max(lay.aux_slots, 1))) &&
-            D.allocate(4) &&
             U.allocate(4 * static_cast<std::size_t>(std::max(lay.uniforms, 1))) &&
             C.allocate(4 * static_cast<std::size_t>(fields_n)) &&
             L.allocate(4 * std::max(n, 3 * static_cast<std::size_t>(shape.ny) * static_cast<std::size_t>(shape.nz) + 16)) &&
@@ -197,6 +199,7 @@ public:
             F.allocate(4 * static_cast<std::size_t>(std::max(lay.flags, 1))) &&
             snapshot.allocate(4 * n * writes_most) &&
             bounds_keys.allocate(8 * static_cast<std::size_t>(fields_n)) &&
+            table_ring.allocate(sizeof(FieldPair) * kTableSlots) &&
             pinned.allocate(4 * n * static_cast<std::size_t>(std::min(fields_n, kGroup)));
         if (!ok) {
             why = "could not allocate the lattice on " + name;
@@ -209,7 +212,7 @@ public:
         a.cuMemsetD32Async(C.ptr(), 0, static_cast<std::size_t>(fields_n), dev->stream);
         a.cuMemsetD32Async(F.ptr(), 0, static_cast<std::size_t>(std::max(lay.flags, 1)), dev->stream);
         grid = GridHost{shape.nx, shape.ny, shape.nz, shape.nx * shape.ny, cells, 0, 0, 0, static_cast<float>(shape.cell), 0,
-            S.ptr(), A.ptr(), D.ptr(), U.ptr(), C.ptr(), L.ptr(), R.ptr(), W.ptr(), F.ptr(), NF.ptr()};
+            S.ptr(), A.ptr(), U.ptr(), C.ptr(), L.ptr(), R.ptr(), W.ptr(), F.ptr(), NF.ptr()};
         write_grid();
         // The fields some program writes out of place get a second buffer.
         std::vector<int> swapped;
@@ -246,14 +249,22 @@ public:
     // Where field f lives now.
     CUdeviceptr base(int f) const { return pairs[static_cast<std::size_t>(f)].now; }
 
-    // After a kernel wrote these fields' next values: they are the fields now. A copy from pageable memory is staged
-    // when it is queued, so the host table may change again right after.
+    // After a kernel wrote these fields' next values: they are the fields now. The new entries go up from a ring of
+    // pinned slots: a copy from pageable memory "may synchronize with the stream" (the host would wait for the kernel
+    // before every swap), from pinned memory it is queued and the host goes on. A slot is reused only after a sync that
+    // the copy reading it is behind (begin_step's, or the one here when the ring is full).
     void swap_fields(const ProgramCode& code)
     {
         for (const int f : code.swaps) {
             FieldPair& pair = pairs[static_cast<std::size_t>(f)];
             std::swap(pair.now, pair.next);
-            dev->api.cuMemcpyHtoDAsync(table_symbol + sizeof(FieldPair) * static_cast<std::size_t>(f), &pair, sizeof(FieldPair), dev->stream);
+            if (next_slot == kTableSlots) {
+                dev->api.cuStreamSynchronize(dev->stream);
+                next_slot = 0;
+            }
+            FieldPair* slot = static_cast<FieldPair*>(table_ring.data()) + next_slot++;
+            *slot = pair;
+            dev->api.cuMemcpyHtoDAsync(table_symbol + sizeof(FieldPair) * static_cast<std::size_t>(f), slot, sizeof(FieldPair), dev->stream);
         }
     }
 
@@ -607,7 +618,10 @@ public:
                 ranges.push_back(RangeCheck{.term = index, .field = field, .slot = add_range(field, decl)});
             }
         }
-        flow_on(equations, dt, law);
+        flow_bounds(equations, dt, count, law, shape.cell, flowing);
+        for (const Equation& eq : equations) {
+            dirty[static_cast<std::size_t>(eq.target)] = 1;
+        }
         for (ConserveCheck& c : mine) {
             const std::vector<int>& group = term.conserves[c.group];
             for (std::size_t i = 0; i < group.size(); ++i) {
@@ -673,28 +687,6 @@ public:
         p.substeps = count;
         p.launches = profile_.launches - launches;
         term_events[index] = {start, event()};
-    }
-
-    // What a term may have done to the bounds of what it writes, for the terms after it (as the Direct3D backend).
-    void flow_on(const std::vector<Equation>& equations, double dt, const Law& law)
-    {
-        for (int round = 0; round < 2; ++round) {
-            std::vector<Bounds> next = flowing;
-            for (const Equation& eq : equations) {
-                const bool within = eq.rhs->op == Op::Diffuse && eq.rhs->args[1]->op == Op::Field && eq.rhs->args[1]->index == eq.target;
-                const auto t = static_cast<std::size_t>(eq.target);
-                if (!within) {
-                    const Bounds rate = bounds_of(*eq.rhs, flowing, law.param_values, shape.cell);
-                    next[t].lo = std::min(next[t].lo, flowing[t].lo + times(dt, std::min(rate.lo, 0.0)));
-                    next[t].hi = std::max(next[t].hi, flowing[t].hi + times(dt, std::max(rate.hi, 0.0)));
-                    const FieldDecl& decl = law.fields[t];
-                    next[t].lo = std::max(next[t].lo, decl.lo);
-                    next[t].hi = std::min(next[t].hi, decl.hi);
-                }
-                dirty[t] = 1;
-            }
-            flowing = std::move(next);
-        }
     }
 
     void run_derives(Law& law, bool all, bool check)
@@ -937,9 +929,10 @@ public:
         changed_out = touched;
         if (lazy) {
             // The bounds come back, not the cells: 8 bytes a field that moved. Between measurements an integrated field
-            // keeps the bounds flow_on carried through the terms (interval arithmetic: never narrower than the truth,
-            // so a term is never skipped that had work; only fewer are), measured every kTightenEvery steps; a derived
-            // field, which flow_on does not follow, is measured every step.
+            // keeps the bounds flow_bounds carried through the terms, substep by substep (interval arithmetic, padded
+            // for float rounding, not clipped to an unclamped range: as wide as the cells or wider, so a term with work
+            // is not skipped; gate cuda_parity grows a field past a threshold to hold it), measured every kTightenEvery
+            // steps; a derived field, which flow_bounds does not follow, is measured every step.
             on_card.resize(fields.count(), 0);
             const bool tighten = lazy_steps++ % kTightenEvery == 0;
             std::vector<int> measured;
@@ -977,8 +970,12 @@ public:
             };
             for (int field : measured) {
                 const auto f = static_cast<std::size_t>(field);
-                const float lo = value(keys[f]);
-                const float hi = value(keys[static_cast<std::size_t>(fields_n) + f]);
+                const std::uint32_t lo_key = keys[f];
+                const std::uint32_t hi_key = keys[static_cast<std::size_t>(fields_n) + f];
+                // Every cell NaN (k_bounds skips them): what look_over finds over the same cells.
+                const bool none = lo_key == 0xffffffffu && hi_key == 0u;
+                const float lo = none ? std::numeric_limits<float>::infinity() : value(lo_key);
+                const float hi = none ? -std::numeric_limits<float>::infinity() : value(hi_key);
                 known[f] = Bounds{lo, hi};
                 known_zero[f] = lo == 0.0f && hi == 0.0f ? 1 : 0;
             }
@@ -1051,6 +1048,7 @@ public:
         term_events.assign(law.terms.size(), {-1, -1});
         next_event = 0;
         next_record = 0;
+        next_slot = 0; // step() and derive() end in a sync: every queued table copy has read its slot
         dev->api.cuMemsetD32Async(R.ptr(), 0, static_cast<std::size_t>(record_words), dev->stream);
         conserve_checks.clear();
         range_checks.clear();

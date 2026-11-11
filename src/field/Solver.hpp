@@ -6,6 +6,7 @@
 #include "field/LawBounds.hpp"
 
 #include <memory>
+#include <mutex>
 #include <optional>
 #include <string>
 #include <string_view>
@@ -108,6 +109,9 @@ private:
     Law law_;
     mutable FieldSet fields_; // with lazy readback a const read may first bring the card's cells here
     mutable std::vector<char> stale_; // per field: the card has newer cells than fields_
+    // Const reads from several threads (between steps) may each find a field stale: one fetches it, the others wait.
+    // A step or an edit while another thread reads is still the caller's to keep apart.
+    std::unique_ptr<std::mutex> fetch_mutex_ = std::make_unique<std::mutex>();
     bool lazy_ = false;
     std::vector<Violation> violations_;
     std::vector<int> substeps_;

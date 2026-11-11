@@ -22,7 +22,8 @@ jobs:
         run: ctest --preset linux-core -LE slow --timeout 900
 
   # The JAX twin against the C++ reference (the whole shipped law, a few steps, field by field), and the numerical
-  # checks that need no card: convergence orders and the finance PDEs on the CPU reference.
+  # checks that need no card: convergence orders (verify.py) and the finance PDEs (finance.py --cpu) on the CPU
+  # reference, each asserting its orders. Their tables are uploaded.
   lawjax-parity:
     runs-on: ubuntu-24.04
     needs: linux-core
@@ -40,3 +41,13 @@ jobs:
       - name: Parity
         working-directory: build
         run: python ../tools/lawjax/parity.py --scene assets/scenes/fire_test.scene --steps 3 --dt 0.25 --lawc ./lawc
+      - name: Orders of convergence
+        run: python bench/verify.py
+      - name: Finance on the CPU
+        run: python bench/finance.py --cpu
+      - uses: actions/upload-artifact@v4
+        with:
+          name: numerics-cpu
+          path: |
+            bench/results/verify_cpu.*
+            bench/results/finance_cpu.*

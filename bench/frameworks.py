@@ -13,8 +13,10 @@ warm-up (so a launch's overhead counts, as it does for a solver loop):
   Numba         @njit(parallel=True) on the CPU (numba.cuda needs the CUDA toolkit's NVVM, which is not assumed here)
   NumPy         one thread, the CPU baseline
 
-Every result is compared with the engine's after the same steps. A framework that is not installed is reported as
-such. Writes bench/results/frameworks.{json,md}.
+Every Python framework's result is compared with NumPy's after the same steps; the engine's is compared with the
+handwritten kernel's (bench_stencil, bit for bit), which is the same arithmetic as NumPy's to float rounding. The
+handwritten kernel is timed both ways, wall like every row (that is what the table sorts by) and card time beside it.
+A framework that is not installed is reported as such. Writes bench/results/frameworks.{json,md}.
 
     python bench/frameworks.py [--sizes 128,256] [--steps 50]
 """
@@ -228,7 +230,7 @@ def main():
         e = engine[n]
         rows = [{"name": "engine, lazy readback, contracts off", "ms": e["lazy_p50_ms"], "version": "this repo"},
                 {"name": "engine, contracts on, every step read back", "ms": e["engine_step_ms"], "version": "this repo"},
-                {"name": "handwritten CUDA (ping-pong)", "ms": e["hand_ms"], "version": "bench_stencil", "card_only": True}]
+                {"name": "handwritten CUDA (ping-pong)", "ms": e["hand_wall_ms"], "card_ms": e["hand_ms"], "version": "bench_stencil"}]
         for name, fn in runners:
             try:
                 ms, result, version = fn(t0, a.steps)
@@ -250,14 +252,17 @@ def main():
           f"{a.steps} steps; median wall time of a step with the device synchronised after it (launch overheads count). "
           "Effective bandwidth at the minimum 8 bytes a cell.\n\n"]
     for n, block in results["sizes"].items():
-        md.append(f"## {n}³ (copy kernel: {block['copy_gbs']:.0f} GB/s)\n\n| implementation | ms a step | GB/s at 8 B/cell | max abs diff vs NumPy | version |\n|---|---|---|---|---|\n")
+        md.append(f"## {n}³ (copy kernel: {block['copy_gbs']:.0f} GB/s)\n\n| implementation | wall ms a step | GB/s at 8 B/cell | max abs diff | version |\n|---|---|---|---|---|\n")
+        hand_diff = f"{block['engine_max_abs_diff_vs_hand_K']:.1e} K vs handwritten"
         for r in sorted(block["rows"], key=lambda r: r["ms"] if r["ms"] else 1e9):
             ms = f"{r['ms']:.3f}" if r["ms"] else "-"
             gbs = f"{r['gbs_8b']:.0f}" if r.get("gbs_8b") else "-"
             diff = r.get("max_abs_diff_vs_numpy_K")
-            md.append(f"| {r['name']} | {ms} | {gbs} | {'-' if diff is None else f'{diff:.1e} K'} | {r['version']} |\n")
-        md.append(f"\nThe engine against the handwritten kernel after the same steps: {block['engine_max_abs_diff_vs_hand_K']:.1e} K. "
-                  "The handwritten row is card time (CUDA events); the others are wall time.\n\n")
+            diff = f"{diff:.1e} K vs NumPy" if diff is not None else (hand_diff if r["version"] == "this repo" else "-")
+            md.append(f"| {r['name']} | {ms} | {gbs} | {diff} | {r['version']} |\n")
+        hand = next(r for r in block["rows"] if r["name"].startswith("handwritten"))
+        md.append(f"\nEvery row is wall time. The handwritten kernel's card time (CUDA events) is {hand['card_ms']:.3f} ms; the "
+                  "difference is what a launch and a synchronisation cost the host.\n\n")
     save("frameworks", results, "".join(md))
 
 

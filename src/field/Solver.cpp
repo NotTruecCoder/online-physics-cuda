@@ -108,24 +108,40 @@ void Solver::fetch(const std::vector<char>& which) const
     if (!gpu_) {
         return;
     }
-    gpu_->fetch(fields_, which);
+    const std::lock_guard<std::mutex> lock(*fetch_mutex_);
+    std::vector<char> still(which.size(), 0); // another thread may have fetched some while this one waited
+    bool any = false;
     for (std::size_t f = 0; f < which.size() && f < stale_.size(); ++f) {
-        stale_[f] = which[f] ? 0 : stale_[f];
+        still[f] = which[f] && stale_[f] ? 1 : 0;
+        any = any || still[f];
+    }
+    if (!any) {
+        return;
+    }
+    gpu_->fetch(fields_, still);
+    for (std::size_t f = 0; f < still.size(); ++f) {
+        stale_[f] = still[f] ? 0 : stale_[f];
     }
 }
 
 void Solver::fetch_all() const
 {
-    if (std::any_of(stale_.begin(), stale_.end(), [](char c) { return c != 0; })) {
-        fetch(stale_);
+    std::vector<char> all;
+    {
+        const std::lock_guard<std::mutex> lock(*fetch_mutex_);
+        if (std::none_of(stale_.begin(), stale_.end(), [](char c) { return c != 0; })) {
+            return;
+        }
+        all.assign(stale_.size(), 1);
     }
+    fetch(all);
 }
 
 const std::vector<float>& Solver::values(int field) const
 {
     const auto f = static_cast<std::size_t>(field);
-    if (f < stale_.size() && stale_[f]) {
-        std::vector<char> one(stale_.size(), 0);
+    std::vector<char> one(stale_.size(), 0);
+    if (f < one.size()) {
         one[f] = 1;
         fetch(one);
     }

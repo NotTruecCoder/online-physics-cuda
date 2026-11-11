@@ -28,11 +28,11 @@ lawc --cuda                             # one translation unit, NVRTC at run tim
 
 ![Convergence of the generated code](docs/figures/convergence.svg)
 
-- **Right:** order 2.0 against exact solutions, CPU = CUDA; a Black-Scholes put within 1e-3 of the formula, an
-  American put within 2e-3 of a binomial tree, Heston within 8e-4 of the characteristic-function price; greeks by
-  `jax.grad` through the solver ([finance](bench/results/finance.md)).
-- **Fast enough to compare:** one 7-point stencil on 256³ is 1.0 ms a step against Warp 0.83, Taichi 3.1, PyTorch 5.9,
-  a handwritten kernel 0.48 ([frameworks](bench/results/frameworks.md)).
+- **Right:** order 2.0 against exact solutions, CPU = CUDA; a Black-Scholes put 1.7e-3 off the formula at S = 100
+  (RMS 1.1e-3 over S = 80..120), an American put 1.6e-3 off a binomial tree, Heston at order 2.1 (in float64; the
+  float32 state floors it near 1e-3); greeks by `jax.grad` through the solver ([finance](bench/results/finance.md)).
+- **Fast enough to compare:** one 7-point stencil on 256³, wall time a step in one run: a handwritten kernel 0.58 ms,
+  Warp 1.15, this engine 1.42, Taichi 3.9, PyTorch 7.2 ([frameworks](bench/results/frameworks.md)).
 - **Reproducible:** no float atomics, fixed-order reductions: bit-identical runs, bit-identical to the handwritten kernel.
 
 ![A law param changed live in the sandbox (F1): water_level turned down, the second flood stands](docs/live_law.gif)
@@ -73,35 +73,53 @@ time a step:
 
 | N³ | copy kernel | handwritten fused kernel | engine, contracts off | engine, contracts on | step, every step read back | step, lazy readback (p50 / p99) |
 | --- | --- | --- | --- | --- | --- | --- |
-| 128³ | 224 GB/s | 0.10 ms | 0.13 ms | 0.30 ms | 3.2 ms | 0.27 / 0.66 ms |
-| 256³ | 251 GB/s | 0.57 ms (235 GB/s) | 0.92 ms | 1.55 ms | 22.9 ms | 1.32 / 2.16 ms |
+| 128³ | 218 GB/s | 0.10 ms | 0.20 ms | 0.42 ms | 3.4 ms | 0.37 / 0.85 ms |
+| 256³ | 255 GB/s | 0.57 ms (236 GB/s) | 1.00 ms | 1.89 ms | 24.6 ms | 1.40 / 2.24 ms |
 
 ![Roofline: the stencil in each tool against the card's bandwidth](docs/figures/roofline.svg)
 
-- Generated code is **1.6x the handwritten kernel** at 256³ (0.92 against 0.57 ms; it was 3x before ping-pong
+Every number in this section is from one run of `perf.py` and one of `frameworks.py` (2026-11-11, the laptop warm:
+Warp's step was 0.83 ms in an earlier run and 1.15 in this one). Ratios hold better than milliseconds across runs.
+
+- Generated code is **1.8x the handwritten kernel** at 256³ (1.00 against 0.57 ms; it was 3x before ping-pong
   buffers): what is left is ring addressing and the change flags.
-- Contract checks (range, conserved total, every step) cost **+68%** of the faster kernel. A conserved total is a warp
+- Contract checks (range, conserved total, every step) cost **+89%** of the faster kernel. A conserved total is a warp
   a row with a fixed shuffle tree, and a changed field sets its flag by a ballot: still bit-reproducible.
-- **Readback is lazy** (`Solver::set_lazy_readback`): a step at 256³ went from 23 ms (every changed field copied
-  back) to 1.3 ms p50 ([tails](docs/figures/tails.svg)). The world keeps the eager copy; its mesher reads every step.
-- The same stencil in other tools, wall time a step at 256³ ([frameworks](bench/results/frameworks.md)): Warp 0.83 ms,
-  this engine 1.0, Taichi 3.1, PyTorch eager 5.9, Numba on 12 CPU threads 14.5, NumPy 329. Warp is faster; the
-  engine's step includes its change flags and the bounds the idle-term test needs.
-- The shipped world law (43 terms, 39 fields, 1 M cells): CPU (OpenMP) 350–410 ms a step depending on the laptop's
-  clocks, CUDA **7.8 ms**: about 50x ([where the time goes](docs/figures/profile.svg)).
+- **Readback is lazy** (`Solver::set_lazy_readback`): a step at 256³ went from 25 ms (every changed field copied
+  back) to 1.4 ms p50 ([tails](docs/figures/tails.svg)). The world keeps the eager copy; its mesher reads every step.
+- The same stencil in other tools, wall time a step at 256³ ([frameworks](bench/results/frameworks.md), every row
+  wall time, sorted by it): the handwritten kernel 0.58 ms (0.56 of card time), Warp 1.15, this engine 1.42, Taichi
+  3.9, PyTorch eager 7.2, Numba on 12 CPU threads 10.2, NumPy 338. Warp is 1.2x faster; the engine's step includes
+  its change flags and the bounds the idle-term test needs. The ping-pong table now goes up from pinned memory (a
+  queued copy; one from pageable memory may wait for the kernel); what that alone saves is inside this laptop's
+  run-to-run spread and was not measured apart.
+- The shipped world law (43 terms, 39 fields, 1 M cells), contracts every step: CPU (OpenMP) 348 ms a step (300–410
+  across runs with the laptop's clocks), CUDA **9.6 ms** with lazy readback (36x) and 13.4 ms reading every changed
+  field back every step, as the sandbox does (26x) ([where the time goes](docs/figures/profile.svg)).
 
 ### Does it solve a problem someone pays for? Option pricing
 
 The same language, not a new code path ([finance](bench/results/finance.md)): Black-Scholes is `diffuse` + `gx` + a
 reaction in log-price, an American put adds the early-exercise projection as a penalty term, Heston is two-dimensional
-with the mixed derivative as `gx(gy(V))` and an upwind variance drift.
+with the mixed derivative as `gx(gy(V))`, every derivative second order (`shift` stencils, the variance flux with exact
+face values, a second-order upwind drift; [heston.law](bench/laws/heston.law)).
 
 | problem | reference | result |
 | --- | --- | --- |
-| European put, 64 → 1024 cells | Black-Scholes formula | order **2.0**, RMS error 1.1·10⁻³ at 1024, CPU = CUDA to the digit |
+| European put, 64 → 1024 cells | Black-Scholes formula | order **2.0**; at 1024 cells 1.7·10⁻³ off at S = 100, RMS 1.1·10⁻³ over S = 80..120; CPU = CUDA to the digit |
 | American put, 1024 cells | binomial tree, 20 000 steps | 6.0920 against 6.0904 |
-| greeks at S = 100 | formula | delta, gamma from the lattice; vega, rho by `jax.grad` through every step: all within 3·10⁻³ |
-| Heston put, 64 → 512 cells in x | characteristic function | error 5·10⁻² → **8·10⁻⁴** |
+| greeks at S = 100, 512 cells | formula | delta, gamma (three-point V_xx) from the lattice, vega, rho by `jax.grad` through every step: within 1.6·10⁻³ relative (gamma the worst) |
+| Heston put, the scheme | characteristic function, v0 = 0.2 | a float64 replica of the scheme: 2.3·10⁻³ → 4.8·10⁻⁴ → 1.1·10⁻⁴, order **2.1**; the scheme it replaced: order 0.9 |
+| Heston put, the engine | same, v0 = 0.04, 64 → 2048 cells in x | best **−9.9·10⁻⁴** at 512 cells; past that float32 rounding wins: −1.9·10⁻³ at 1024 (87 000 steps), −1.2·10⁻² at 2048 (350 000) |
+| Heston surface in one run | same, 64 strikes × 4 maturities | 256 puts at 512 cells, RMS 2.9·10⁻³ (worst 1.1·10⁻², in the money at T = 0.5); 1.17 ms of card time a step for 64 strikes against 0.26 for one: **14x** the throughput a strike |
+
+On Heston, honestly: the first scheme (first-order upwind drift, the harmonic face mean of `diffuse`, where a
+variance linear in y wants the arithmetic) was first order, and its 8·10⁻⁴ at 512 cells was, most likely, errors of
+opposite sign cancelling (the same scheme is 8.8·10⁻³ off at 512 cells with v0 = 0.2); a bilinear read-out at
+(ln 100, v0) also added an O(h²) error whose coefficient jumped with where v0 fell in its cell (bicubic now).
+Explicit Euler needs 10⁴–10⁵ steps here, and a float32 cell whose increment is nearly the
+same every step is rounded the same way every step: the engine's state, not the scheme, sets the floor. An implicit
+scheme (fewer, larger steps) or compensated sums would lift it; neither is built.
 
 Every step is bit-reproducible on one card, which for a backtest means a rerun gives the same price to the bit.
 
@@ -134,7 +152,8 @@ on 6 unseen ones and 2 out of distribution; 3 training seeds; [model2](bench/res
 | **coarse + learned flux** | **28 ± 7 K** | **3.1 ± 3.6 m** |
 
 Out of distribution: a full uniform fuel load, 12 K against 160 K (plain) and 188 K (fitted); sparse fuel where the
-front dies, all three within 5 K. Card time: coarse + learned flux **2.0 ms**, while the fine lattice costs **1.1 ms**.
+front dies, all three within 5 K. Card time: coarse + learned flux **3.0 ms**, while the fine lattice costs **1.4 ms**
+([perf](bench/results/perf.md)).
 It is more accurate than the classical options at the same resolution, but here it costs more than running the fine
 lattice.
 
@@ -149,9 +168,9 @@ lattice.
 
 It is stable where the explicit scheme at that step blows up, with no new extremes (overshoot 0). The guard undoes
 0/640 trained steps and 44/640 untrained ones, and no violation reaches the world. But it is **2x less accurate** than
-the 2 classical substeps it replaces and **25x more expensive** (7.7 ms against 0.31 ms on 1024², after an
-unrolling fix in the net code generator that made it 12x faster). This is a negative result for the scheme and a
-working demonstration of the guard.
+the 2 classical substeps it replaces and **27x more expensive** (12.0 ms against 0.44 ms of card time a step on
+1024², [perf](bench/results/perf.md), after an unrolling fix in the net code generator that made it 12x faster).
+This is a negative result for the scheme and a working demonstration of the guard.
 
 ![Accuracy against cost, out of sample, for models 2 and 3](docs/figures/pareto.svg)
 
@@ -173,19 +192,24 @@ replay holds few such transitions. Its 12-step cost forecast is worse than persi
 - The compiler is correct: the right orders of convergence, bit-identical to a handwritten kernel, 1e-7 against the
   CPU and JAX references. It is close to, not at, the bandwidth floor: a term runs at 1.6-1.9x a handwritten kernel
   (run to run) and a step (lazy readback) at 1.2x Warp's on the same stencil.
-- It prices options: Black-Scholes at second order, American and Heston close to their references, greeks through the
-  JAX twin.
+- It prices options: Black-Scholes at second order, the American put close to its tree, Heston second order in its
+  scheme but capped near 10⁻³ by float32 over the explicit scheme's 10⁴+ steps; a strike × maturity surface in one
+  run; greeks through the JAX twin.
 - Learned operators with built-in guarantees work as designed, and the guard catches what the law declares (only
   that: an oscillation inside the declared range passes it; see gate `guarded`).
 - Of the three models, only the coarse-lattice correction clearly beats its classical alternatives out of sample, and
   even it costs more than running finer at this scale. The learned discretization loses to plain substeps. The world
   model plans well but does not generalise as a simulator.
-- Not done: multi-GPU; reverse-mode AD in the IR (gradients go through the JAX twin today); a SIMD CPU backend; a
-  standard learned-PDE benchmark (PDEBench, Kochkov 2021); flowing rivers; a learned simulator over the engine's own
-  fields with the guard as its safety net (the natural next model).
-- Gates: all pass on Windows; CI runs the compiler's and the fast world gates on Linux on every push, the five slow
-  world gates weekly ([slow-gates](.github/workflows/slow-gates.yml)). GCC found a dangling reference MSVC hid
-  (WorldModel, fixed).
+- Not done: an implicit scheme (Crank-Nicolson / ADI, which needs a tridiagonal solve as an op of the language) or
+  compensated float32 state, either of which would lift Heston's floor; a batch over model parameters (params are
+  scalars; only strikes and maturities batch today); Heston calibration by `jax.grad` against a market surface;
+  multi-GPU; reverse-mode AD in the IR (gradients go through the JAX twin today); a SIMD CPU backend; a standard
+  learned-PDE benchmark (PDEBench, Kochkov 2021); flowing rivers; a learned simulator over the engine's own fields
+  with the guard as its safety net (the natural next model).
+- Gates: all pass on Windows; CI runs the compiler's and the fast world gates on Linux on every push, and the orders
+  of convergence and the finance PDEs on the CPU reference with their orders asserted (`verify.py`, `finance.py
+  --cpu`); the five slow world gates weekly ([slow-gates](.github/workflows/slow-gates.yml)). GCC found a dangling
+  reference MSVC hid (WorldModel, fixed).
 
 ## What it is
 

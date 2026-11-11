@@ -25,4 +25,9 @@ bool always_zero(const Node& n, const std::vector<char>& zero, const std::vector
 
 Bounds bounds_of(const Node& n, const std::vector<Bounds>& fields, const std::vector<double>& params, double h);
 
+// What a term of explicit Euler substeps (`substeps` of dt / substeps) may have done to the bounds of the fields it
+// writes, for the terms after it: carried substep by substep, never narrower than the cells. Clipped to the declared
+// range only for a field that is clamped to it. Shared by the GPU backends.
+void flow_bounds(const std::vector<Equation>& equations, double dt, int substeps, const Law& law, double h, std::vector<Bounds>& flowing);
+
 } // namespace fieldengine::field

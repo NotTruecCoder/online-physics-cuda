@@ -5,120 +5,120 @@
    "rows": [
     {
      "name": "engine, lazy readback, contracts off",
-     "ms": 0.2453,
+     "ms": 0.4127,
      "version": "this repo",
-     "gbs_8b": 68.39468406033428
+     "gbs_8b": 40.65232856796705
     },
     {
      "name": "engine, contracts on, every step read back",
-     "ms": 3.2604,
+     "ms": 3.4146,
      "version": "this repo",
-     "gbs_8b": 5.145753895227579
+     "gbs_8b": 4.913376676623909
     },
     {
      "name": "handwritten CUDA (ping-pong)",
-     "ms": 0.094176,
+     "ms": 0.1116,
+     "card_ms": 0.101376,
      "version": "bench_stencil",
-     "card_only": true,
-     "gbs_8b": 178.14746856948693
+     "gbs_8b": 150.33347670250896
     },
     {
      "name": "Taichi (CUDA)",
-     "ms": 0.3978000022470951,
+     "ms": 0.534999999217689,
      "version": "taichi (1, 7, 4)",
      "max_abs_diff_vs_numpy_K": 0.00030517578125,
-     "gbs_8b": 42.17500227558763
+     "gbs_8b": 31.359282288846188
     },
     {
      "name": "Warp (CUDA)",
-     "ms": 0.20929996389895678,
+     "ms": 0.19109994173049927,
      "version": "warp 1.19.0",
      "max_abs_diff_vs_numpy_K": 0.000244140625,
-     "gbs_8b": 80.15871425615484
+     "gbs_8b": 87.79288914520052
     },
     {
      "name": "PyTorch eager (CUDA)",
-     "ms": 0.8778499905019999,
+     "ms": 1.0312499944120646,
      "version": "torch 2.11.0+cu128",
      "max_abs_diff_vs_numpy_K": 0.0,
-     "gbs_8b": 19.11171177481693
+     "gbs_8b": 16.268815603305786
     },
     {
      "name": "Numba parallel (CPU)",
-     "ms": 1.9245999865233898,
+     "ms": 1.886500045657158,
      "version": "numba 0.61.2, 12 threads",
      "max_abs_diff_vs_numpy_K": 0.000244140625,
-     "gbs_8b": 8.717248320419285
+     "gbs_8b": 8.89330272671989
     },
     {
      "name": "NumPy (CPU, 1 thread)",
-     "ms": 44.73560000769794,
+     "ms": 48.846199992112815,
      "version": "numpy 1.26.4",
      "max_abs_diff_vs_numpy_K": 0.0,
-     "gbs_8b": 0.3750305349009075
+     "gbs_8b": 0.34347023929617887
     }
    ],
-   "copy_gbs": 260.063,
+   "copy_gbs": 221.405,
    "engine_max_abs_diff_vs_hand_K": 0
   },
   "256": {
    "rows": [
     {
      "name": "engine, lazy readback, contracts off",
-     "ms": 1.008,
+     "ms": 1.4171,
      "version": "this repo",
-     "gbs_8b": 133.15250793650793
+     "gbs_8b": 94.71295462564392
     },
     {
      "name": "engine, contracts on, every step read back",
-     "ms": 25.5995,
+     "ms": 24.2754,
      "version": "this repo",
-     "gbs_8b": 5.242982402000039
+     "gbs_8b": 5.52896051146428
     },
     {
      "name": "handwritten CUDA (ping-pong)",
-     "ms": 0.477184,
+     "ms": 0.5746,
+     "card_ms": 0.564224,
      "version": "bench_stencil",
-     "card_only": true,
-     "gbs_8b": 281.2703862660944
+     "gbs_8b": 233.58462930734424
     },
     {
      "name": "Taichi (CUDA)",
-     "ms": 3.14250000519678,
+     "ms": 3.9017999661155045,
      "version": "taichi (1, 7, 4)",
      "max_abs_diff_vs_numpy_K": 0.00030517578125,
-     "gbs_8b": 42.71049412189116
+     "gbs_8b": 34.39892592280236
     },
     {
      "name": "Warp (CUDA)",
-     "ms": 0.8245499921031296,
+     "ms": 1.1542999418452382,
      "version": "warp 1.19.0",
      "max_abs_diff_vs_numpy_K": 0.00030517578125,
-     "gbs_8b": 162.77694413368314
+     "gbs_8b": 116.27630144851479
     },
     {
      "name": "PyTorch eager (CUDA)",
-     "ms": 5.871500005014241,
+     "ms": 7.180799962952733,
      "version": "torch 2.11.0+cu128",
      "max_abs_diff_vs_numpy_K": 0.0,
-     "gbs_8b": 22.859188944116244
+     "gbs_8b": 18.691194392332005
     },
     {
      "name": "Numba parallel (CPU)",
-     "ms": 14.468400040641427,
+     "ms": 10.220899945124984,
      "version": "numba 0.61.2, 12 threads",
      "max_abs_diff_vs_numpy_K": 0.00030517578125,
-     "gbs_8b": 9.276611624159221
+     "gbs_8b": 13.131693756968751
     },
     {
      "name": "NumPy (CPU, 1 thread)",
-     "ms": 328.8623000262305,
+     "ms": 338.1577000254765,
      "version": "numpy 1.26.4",
      "max_abs_diff_vs_numpy_K": 0.0,
-     "gbs_8b": 0.4081274381079698
+     "gbs_8b": 0.39690868488249165
     }
    ],
-   "copy_gbs": 298.569,
+   "copy_gbs": 256.595,
    "engine_max_abs_diff_vs_hand_K": 0
   }
  }

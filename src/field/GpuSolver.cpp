@@ -1115,7 +1115,10 @@ struct GpuSolver::Impl {
                 range_checks.push_back(RangeCheck{.term = index, .field = field, .slot = add_range(field, decl)});
             }
         }
-        flow_on(term, dt, law);
+        flow_bounds(term.equations, dt, count, law, shape.cell, flowing);
+        for (const Equation& eq : term.equations) {
+            dirty[static_cast<std::size_t>(eq.target)] = 1;
+        }
         for (ConserveCheck& check : checks) {
             const std::vector<int>& group = term.conserves[check.group];
             for (std::size_t i = 0; i < group.size(); ++i) {
@@ -1125,30 +1128,6 @@ struct GpuSolver::Impl {
                 }
             }
             conserve_checks.push_back(check);
-        }
-    }
-
-    // What this term may have done to the bounds of what it writes, for the terms after it. If this is ever short, the
-    // next term only starts a step later: the next step's bounds are read from the cells themselves.
-    void flow_on(const Term& term, double dt, const Law& law)
-    {
-        for (int round = 0; round < 2; ++round) {
-            std::vector<Bounds> next = flowing;
-            for (const Equation& eq : term.equations) {
-                // Heat going down its own gradient stays between the hottest and the coldest, at any stable dt.
-                const bool within = eq.rhs->op == Op::Diffuse && eq.rhs->args[1]->op == Op::Field && eq.rhs->args[1]->index == eq.target;
-                const auto t = static_cast<std::size_t>(eq.target);
-                if (!within) {
-                    const Bounds rate = bounds_of(*eq.rhs, flowing, law.param_values, shape.cell);
-                    next[t].lo = std::min(next[t].lo, flowing[t].lo + times(dt, std::min(rate.lo, 0.0)));
-                    next[t].hi = std::max(next[t].hi, flowing[t].hi + times(dt, std::max(rate.hi, 0.0)));
-                    const FieldDecl& decl = law.fields[t];
-                    next[t].lo = std::max(next[t].lo, decl.lo);
-                    next[t].hi = std::min(next[t].hi, decl.hi);
-                }
-                dirty[t] = 1;
-            }
-            flowing = std::move(next);
         }
     }
 

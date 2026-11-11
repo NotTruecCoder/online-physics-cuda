@@ -27,7 +27,6 @@ struct Grid {
     int pad;
     float* S;        // the fields, a ring: logical cell (x, y, z) lives at I(x, y, z)
     float* A;        // stages: stored values, distance and poisson buffers, net face fluxes
-    float* D;        // deltas, for terms that cannot store in place
     float* U;        // reductions: one number each
     unsigned* C;     // per field: did any cell change
     float* L;        // linear staging: uploads, downloads, partial sums
@@ -230,6 +229,7 @@ extern "C" __global__ void k_bounds(int field, unsigned* out, int fields)
     unsigned lo = 0xffffffffu, hi = 0u;
     const float* v = FT[field].now;
     for (int i = blockIdx.x * blockDim.x + threadIdx.x; i < G.cells; i += gridDim.x * blockDim.x) {
+        if (v[i] != v[i]) continue; // NaN is the range contract's to report; the bounds skip it, as the host's do
         const unsigned k = order_key(v[i]);
         lo = min(lo, k); hi = max(hi, k);
     }
@@ -327,7 +327,6 @@ private:
         auto take = [&](const ir::Program& p) {
             used.insert(p.stages.begin(), p.stages.end());
             used.insert(p.limit_stages.begin(), p.limit_stages.end());
-            lay_.max_equations = std::max(lay_.max_equations, static_cast<int>(p.equations.size()));
         };
         for (const ir::Program& p : m_.terms) take(p);
         for (const ir::Program& p : m_.learned) take(p);

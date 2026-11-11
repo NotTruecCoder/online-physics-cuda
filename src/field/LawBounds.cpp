@@ -209,3 +209,61 @@ bool always_zero(const Node& n, const std::vector<char>& zero, const std::vector
 }
 
 } // namespace fieldengine::field
+
+namespace fieldengine::field {
+
+void flow_bounds(const std::vector<Equation>& equations, double dt, int substeps, const Law& law, double h, std::vector<Bounds>& flowing)
+{
+    // A substep moves a cell by sub * (a rate within bounds_of over the bounds at its start): x + sub * [r.lo, r.hi]. A
+    // whole-dt rate from the first bounds would be short for growth (d x = a x over n substeps grows (1 + a dt / n)^n,
+    // past what one rate can say). Two rounds a substep: an in-place program's later equation may read an earlier
+    // one's new value.
+    const int n = std::max(substeps, 1);
+    const double sub = dt / n;
+    const std::vector<Bounds> before = flowing;
+    for (int s = 0; s < n; ++s) {
+        const std::vector<Bounds> start = flowing;
+        std::vector<Bounds> now = flowing;
+        for (int round = 0; round < 2; ++round) {
+            std::vector<Bounds> next = now;
+            for (const Equation& eq : equations) {
+                // Heat going down its own gradient stays between the hottest and the coldest, at any stable dt.
+                const bool within = eq.rhs->op == Op::Diffuse && eq.rhs->args[1]->op == Op::Field && eq.rhs->args[1]->index == eq.target;
+                if (within) {
+                    continue;
+                }
+                const auto t = static_cast<std::size_t>(eq.target);
+                const Bounds rate = bounds_of(*eq.rhs, now, law.param_values, h);
+                next[t].lo = std::min(next[t].lo, start[t].lo + times(sub, std::min(rate.lo, 0.0)));
+                next[t].hi = std::max(next[t].hi, start[t].hi + times(sub, std::max(rate.hi, 0.0)));
+            }
+            now = std::move(next);
+        }
+        bool moved = false;
+        for (std::size_t f = 0; f < now.size() && !moved; ++f) {
+            moved = now[f].lo != flowing[f].lo || now[f].hi != flowing[f].hi;
+        }
+        flowing = std::move(now);
+        if (!moved) {
+            break; // a fixed point: the substeps left move nothing further
+        }
+    }
+    // The cells moved in float, these in double: a bound that moved is widened by a few roundings a substep. The clamp
+    // runs once, after the substeps. A field that is not clamped may leave its range: that is a violation the contracts
+    // report, not a bound.
+    for (const Equation& eq : equations) {
+        const auto t = static_cast<std::size_t>(eq.target);
+        const FieldDecl& decl = law.fields[t];
+        Bounds& b = flowing[t];
+        if (b.lo != before[t].lo || b.hi != before[t].hi) {
+            b.lo -= 1e-6 * n * std::abs(b.lo); // relative: a bound at exactly 0 (no fire anywhere) stays there
+            b.hi += 1e-6 * n * std::abs(b.hi);
+        }
+        if (decl.clamp) {
+            b.lo = std::clamp(b.lo, decl.lo, decl.hi);
+            b.hi = std::clamp(b.hi, decl.lo, decl.hi);
+        }
+    }
+}
+
+} // namespace fieldengine::field

@@ -19,6 +19,7 @@
 #include <cstdlib>
 #include <iostream>
 #include <optional>
+#include <tuple>
 
 using namespace fieldengine::field;
 using fieldengine::gate::check;
@@ -229,6 +230,46 @@ int main()
         check(lazy.profile().download_bytes < eager.profile().download_bytes, "a lazy step moves less than an eager one");
         check(std::as_const(lazy).fields().digest() == std::as_const(eager).fields().digest(),
             "lazy readback, with an edit between steps, gives the same bits as copying every step");
+    }
+
+    // ---- 5. carried bounds are never short: a field that grows, a term that waits for it to pass a threshold --------
+    // Y counts the steps X is past thr; the term on Y is skipped while X's bounds say it is below. Falsified by: the
+    // carried bounds taking the rate once for the whole dt (d X = a X in 40 substeps grows 45x a step; one rate says
+    // 25x: Y starts a step late, eagerly as lazily); clipping them to an unclamped declared range (X passes 100 with a
+    // range of [0, 100]: Y never starts). Each run once.
+    {
+        const auto run = [](const std::string& text, int steps, int mode) {
+            const std::optional<Law> law = compile({}, text);
+            std::vector<float> y;
+            if (!law) {
+                return y;
+            }
+            Solver s(*law, GridShape{8, 8, 1, 1.0});
+            std::string why;
+            if (mode > 0 && !s.use_gpu(why)) {
+                return y;
+            }
+            s.set_lazy_readback(mode == 2);
+            for (int k = 0; k < steps; ++k) {
+                s.step(1.0);
+            }
+            y = std::as_const(s).values(s.field("Y"));
+            return y;
+        };
+        const std::string grows = "field X init 1 range 0 1e30\nfield Y init 0 range 0 1e9\nparam a = 4\nparam thr = 70000\n"
+                                  "term grow\n  d X = a * X\n  max_dt = 0.1 / a\nterm over\n  d Y = step(X - thr)\n";
+        const std::string leaves = "field X init 1 range 0 100\nfield Y init 0 range 0 1e9\nparam thr = 1000\n"
+                                   "term grow\n  d X = 0.5 * X\nterm over\n  d Y = step(X - thr)\n";
+        for (const auto& [text, steps, what] : {std::tuple{grows, 6, "a field grown in substeps"}, std::tuple{leaves, 20, "a field past its unclamped range"}}) {
+            const std::vector<float> cpu = run(text, steps, 0);
+            const std::vector<float> eager = run(text, steps, 1);
+            const std::vector<float> lazy = run(text, steps, 2);
+            std::cout << "  " << what << ": Y = " << (cpu.empty() ? -1.f : cpu[0]) << " on the CPU, " << (eager.empty() ? -1.f : eager[0])
+                      << " eager, " << (lazy.empty() ? -1.f : lazy[0]) << " lazy\n";
+            check(!cpu.empty() && cpu[0] > 0.f, std::string(what) + ": the threshold is passed");
+            check(eager == cpu, std::string(what) + ": eager CUDA starts the waiting term when the CPU does");
+            check(lazy == cpu, std::string(what) + ": lazy CUDA starts the waiting term when the CPU does");
+        }
     }
     return fieldengine::gate::report("cuda_parity");
 }

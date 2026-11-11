@@ -3,11 +3,17 @@
 #
 #   dV/dtau = 1/2 var (V_xx + V_yy) + rho var V_xy + (r - 1/2 var) V_x + kappa (theta - var) / sig_v V_y - r V
 #
-# 1/2 var (V_xx + V_yy) is diffuse(1/2 var, V) less the 1/2 sig_v V_y its flux form adds (k grows along y); the mixed
-# derivative is gx(gy(V)), the four-corner stencil; the variance drift is upwind (adv), which is also the right
-# boundary scheme at var = 0, where the PDE has no diffusion and the drift points into the domain. Each cell's
-# variance is a static field (the cell centre's), written by the driver. (Not `v`: V.bin and v.bin are one file on a
-# case-blind file system.)
+# Every derivative second order:
+#   V_xx       the three-point stencil (shift), zero flux at the x ends.
+#   var V_yy   the flux form d/dy(var V_y) less sig_v V_y (var_y = sig_v). var is linear in y, so the face values
+#              var +- sig_v h / 2 are exact (no mean of two cells: a harmonic one is 25% off at the first face); the face
+#              at var = 0 carries nothing, which is the PDE's own boundary there (no diffusion, the drift points in).
+#   V_xy       gx(gy(V)), the four-corner stencil.
+#   V_y        drift b = kappa (theta - var) / sig_v - sig_v / 2 (the flux form's correction folded in), second-order
+#              upwind: (4 V(y+1) - V(y+2) - 3 V) / 2h where b > 0, (3 V - 4 V(y-1) + V(y-2)) / 2h where b < 0.
+# Explicit Euler with dt ~ h^2: order 2 in h overall. The step limit is the diffusion's or the drift's (CFL), the
+# smaller. Each cell's variance is a static field (the cell centre's), written by the driver. (Not `v`: V.bin and v.bin
+# are one file on a case-blind file system.) heston_first_order.law is the scheme this replaced.
 field V init 0 range -1 1000000
 field var init 0 range 0 100 static
 
@@ -19,5 +25,5 @@ param r = 0.025
 param var_max = 0.6          # the largest cell variance (the driver sets it): the step limit, without a reduction
 
 term heston
-  d V = diffuse(0.5 * var, V) - 0.5 * sig_v * gy(V) + rho * var * gx(gy(V)) + (r - 0.5 * var) * gx(V) + adv(V, 0, -kappa * (theta - var) / sig_v, 0) - r * V
-  max_dt = 0.2 * h * h / var_max
+  d V = 0.5 * var * (shift(V, 1, 0, 0) - 2 * V + shift(V, -1, 0, 0)) / (h * h) + 0.5 * ((var + 0.5 * sig_v * h) * (shift(V, 0, 1, 0) - V) - (var - 0.5 * sig_v * h) * (V - shift(V, 0, -1, 0))) / (h * h) + rho * var * gx(gy(V)) + (r - 0.5 * var) * gx(V) + pos(kappa * (theta - var) / sig_v - 0.5 * sig_v) * (4 * shift(V, 0, 1, 0) - shift(V, 0, 2, 0) - 3 * V) / (2 * h) - pos(0.5 * sig_v - kappa * (theta - var) / sig_v) * (3 * V - 4 * shift(V, 0, -1, 0) + shift(V, 0, -2, 0)) / (2 * h) - r * V
+  max_dt = min(0.2 * h * h / var_max, 0.5 * h / (abs(r) + 0.5 * var_max + (kappa * max(theta, var_max - theta) + 0.5 * sig_v * sig_v) / sig_v))

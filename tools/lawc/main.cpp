@@ -9,6 +9,8 @@
 //   --init DIR                          start from a state in that format (after the scene's ops; fields it lacks keep theirs)
 //   --param NAME VALUE                  set a param (after the scene's)
 //   --json FILE [--warmup N]            timings as JSON: mean step, card time and per-term time over the steps after N
+//   --eager                             on a GPU, every changed field back to the host every step (as the sandbox,
+//                                       whose mesher reads them), not only when dumped or compared
 //
 // Laws come from the command line, or from the scene's `law` lines.
 #include "field/Law.hpp"
@@ -78,6 +80,7 @@ int main(int argc, char** argv)
     bool listing = false;
     bool compare = false;
     bool learned = false;
+    bool eager = false;
     bool profile = false;
     int steps = 0;
     int every = 0;
@@ -105,6 +108,7 @@ int main(int argc, char** argv)
         else if (a == "--backend") backend = next();
         else if (a == "--compare") compare = true;
         else if (a == "--learned") learned = true;
+        else if (a == "--eager") eager = true;
         else if (a == "--profile") profile = true;
         else if (a == "--dump") dump = next();
         else if (a == "--every") every = std::atoi(next().c_str());
@@ -124,7 +128,7 @@ int main(int argc, char** argv)
             grid = g;
         } else if (a == "--help" || a == "-h") {
             std::cout << "lawc [--ir] [--ir-json F] [--cuda F] [--scene S] [--grid NX NY NZ H] [--steps N] [--dt X]\n"
-                         "     [--backend cpu|cuda|hlsl] [--learned] [--profile] [--compare] [--dump DIR [--every K]]\n"
+                         "     [--backend cpu|cuda|hlsl] [--learned] [--profile] [--eager] [--compare] [--dump DIR [--every K]]\n"
                          "     [--init DIR] [--param NAME VALUE]... [--json FILE [--warmup N]] LAW...\n";
             return 0;
         } else {
@@ -217,7 +221,7 @@ int main(int argc, char** argv)
                 return std::nullopt;
             }
             solver.check_contracts_every(1);
-            solver.set_lazy_readback(true); // the cells come back when they are dumped or compared, not every step
+            solver.set_lazy_readback(!eager); // lazy: the cells come back when they are dumped or compared, not every step
         }
         return solver;
     };

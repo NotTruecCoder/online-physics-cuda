@@ -3,7 +3,9 @@
 #
 #   dV/dtau = 1/2 sig^2 V_xx + (r - 1/2 sig^2) V_x - r V
 #
-# Zero-flux ends (the edge cell repeats): right for a put, whose V_x vanishes at both ends of a wide enough domain.
+# Zero-flux ends (the edge cell repeats). Right at the top, where a put's V_x vanishes; wrong at the bottom, where
+# V = K e^(-r tau) - S and V_x = -S (in log price), but that end is ln K - 4 (S = 1.8), 20 standard deviations of ln S
+# (sig sqrt(T) = 0.2) from S = 100: what it starts does not get there.
 # An American put adds a penalty towards the payoff P; with lam = 1/dt and one substep a step it is the projection
 # V = max(V, P) after every step (lam = 0: European).
 field V init 0 range -1 1000000

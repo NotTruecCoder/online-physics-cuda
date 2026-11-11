@@ -33,7 +33,6 @@ struct LawLayout {
     int aux_slots = 0;
     int uniforms = 0;
     int flags = 0;
-    int max_equations = 1;
     int net_floats = 1;
     int net_words = 2;
     std::vector<int> slot;    // per instruction: its first slot in A (stage values), or -1
