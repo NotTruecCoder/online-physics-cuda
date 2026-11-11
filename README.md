@@ -64,22 +64,23 @@ All numbers: one RTX 3060 Laptop GPU (6 GB), 8 CPU threads; reproduce with the s
 
 ### What does the generated code cost?
 
-One conduction term on N³, card time a step ([perf](bench/results/perf.md)):
+One conduction term on N³ ([perf](bench/results/perf.md)); the first three columns are card time, the last two wall
+time a step:
 
-| N³ | copy kernel | handwritten fused kernel | engine, contracts off | engine, contracts on | engine step incl. readback |
-| --- | --- | --- | --- | --- | --- |
-| 128³ | 256 GB/s | 0.096 ms | 0.21 ms | 0.37 ms | 3.3 ms |
-| 256³ | 297 GB/s | 0.50 ms (269 GB/s, 91% of copy) | 1.53 ms | 2.20 ms | 28 ms |
+| N³ | copy kernel | handwritten fused kernel | engine, contracts off | engine, contracts on | step, every step read back | step, lazy readback (p50 / p99) |
+| --- | --- | --- | --- | --- | --- | --- |
+| 128³ | 224 GB/s | 0.10 ms | 0.13 ms | 0.30 ms | 3.2 ms | 0.27 / 0.66 ms |
+| 256³ | 251 GB/s | 0.57 ms (235 GB/s) | 0.92 ms | 1.55 ms | 22.9 ms | 1.32 / 2.16 ms |
 
-- Generated code is **1.9x the handwritten kernel** at 256³ (0.94 against 0.51 ms; it was 3x before ping-pong
-  buffers): what is left is ring addressing and the change flags. Full table and tails in [perf](bench/results/perf.md).
-- Contract checks (range, conserved total, every step) cost **+44%**. Before this round they cost +290%: the total was
-  a thread a row (uncoalesced) and every changed cell wrote one shared flag. Now it is a warp a row with a fixed shuffle
-  tree and a ballot, still bit-reproducible.
-- **Readback is lazy** (`Solver::set_lazy_readback`): a step at 256³ went from 33 ms (every changed field copied
-  back) to 1.1 ms p50, 2.3 ms p99 ([tails](docs/figures/tails.svg)). The world keeps the eager copy; its mesher reads
-  every step.
-- The shipped world law (43 terms, 39 fields, 1 M cells): CPU (OpenMP, 8 threads) 307 ms → CUDA **11.8 ms** a step, 26x.
+- Generated code is **1.6x the handwritten kernel** at 256³ (0.92 against 0.57 ms; it was 3x before ping-pong
+  buffers): what is left is ring addressing and the change flags.
+- Contract checks (range, conserved total, every step) cost **+68%** of the faster kernel. A conserved total is a warp
+  a row with a fixed shuffle tree, and a changed field sets its flag by a ballot: still bit-reproducible.
+- **Readback is lazy** (`Solver::set_lazy_readback`): a step at 256³ went from 23 ms (every changed field copied
+  back) to 1.3 ms p50 ([tails](docs/figures/tails.svg)). The world keeps the eager copy; its mesher reads every step.
+- The shipped world law (43 terms, 39 fields, 1 M cells): CPU (OpenMP) 350–410 ms a step depending on the laptop's
+  clocks, CUDA **7.8 ms**: about 50x. The same build of the previous round gives the same CPU time today, so the gain
+  over the earlier 26x (307 → 11.8 ms) is the CUDA side.
 
 ### Do the learned models help, out of sample?
 
@@ -145,15 +146,15 @@ invariance from mean removal. Each holds for any weights; no training is involve
 ### What this adds up to
 
 - The compiler is correct: the right orders of convergence, bit-identical to a handwritten kernel, 1e-7 against the
-  CPU and JAX references. It is not yet fast in the bandwidth sense: kernels run at ~3x the minimum traffic, and the
-  per-step readback dominates large lattices.
+  CPU and JAX references. It is close to, not at, the bandwidth floor: a term runs at 1.6-1.9x a handwritten kernel
+  (run to run) and a step (lazy readback) at 1.2x Warp's on the same stencil.
 - Learned operators with built-in guarantees work as designed, and the guard catches what the law declares (only
   that: an oscillation inside the declared range passes it; see gate `guarded`).
 - Of the three models, only the coarse-lattice correction clearly beats its classical alternatives out of sample, and
   even it costs more than running finer at this scale. The learned discretization loses to plain substeps. The world
   model plans well but does not generalise as a simulator.
-- Not done: multi-GPU; lazy readback (it needs the per-field bounds that let idle terms be skipped computed on the
-  card, since today they are read off the downloaded cells); flowing rivers; a learned simulator over the engine's own
+- Not done: multi-GPU; reverse-mode AD in the IR (gradients go through the JAX twin today); a SIMD CPU backend; a
+  standard learned-PDE benchmark (PDEBench, Kochkov 2021); flowing rivers; a learned simulator over the engine's own
   fields with the guard as its safety net (the natural next model).
 - Gates: all pass on Windows; CI runs the compiler's and the fast world gates on Linux on every push, the five slow
   world gates weekly ([slow-gates](.github/workflows/slow-gates.yml)). GCC found a dangling reference MSVC hid
