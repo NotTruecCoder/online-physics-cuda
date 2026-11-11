@@ -202,5 +202,33 @@ int main()
         check(std::as_const(ring).fields().digest() == std::as_const(whole).fields().digest(),
             "a window moved as a ring (only what arrived uploaded) is to the bit the window moved whole");
     }
+
+    // ---- 4. lazy readback: results left on the card, read when asked, are to the bit the copied ones ----------------
+    // 20 steps cross the bounds' measuring cadence (every 8) twice; an edit mid-run must land on the card's cells, not
+    // on the host's stale copy. Falsified by: edit_cell not fetching first (the edit uploads old cells); bounds carried
+    // narrower than flow_on's (a term with work skipped).
+    if (world) {
+        Solver eager(*world, scene.grid);
+        Solver lazy(*world, scene.grid);
+        apply_scene(scene, eager, error);
+        apply_scene(scene, lazy, error);
+        std::string why;
+        eager.use_gpu(why);
+        lazy.use_gpu(why);
+        lazy.set_lazy_readback(true);
+        const int T = lazy.field("T");
+        const std::size_t cell = scene.grid.index(scene.grid.nx / 2, scene.grid.ny / 2, scene.grid.nz / 2);
+        for (int s = 0; s < 20; ++s) {
+            if (s == 11) {
+                eager.edit_cell(T, cell) += 500.0f;
+                lazy.edit_cell(T, cell) += 500.0f;
+            }
+            eager.step(0.25);
+            lazy.step(0.25);
+        }
+        check(lazy.profile().download_bytes < eager.profile().download_bytes, "a lazy step moves less than an eager one");
+        check(std::as_const(lazy).fields().digest() == std::as_const(eager).fields().digest(),
+            "lazy readback, with an edit between steps, gives the same bits as copying every step");
+    }
     return fieldengine::gate::report("cuda_parity");
 }
