@@ -155,22 +155,22 @@
     "nx": 64,
     "cells": 1344,
     "steps": 328,
-    "price": 6.475579086939494,
-    "err": 0.04971852527765819,
+    "price": 6.476752746105195,
+    "err": 0.05089218444335941,
     "timing": {
      "backend": "CUDA",
      "cells": 1344,
      "steps": 45,
-     "mean_ms": 0.415402222,
-     "median_ms": 0.395,
-     "gpu_ms": 0.387347911,
+     "mean_ms": 0.415986667,
+     "median_ms": 0.299,
+     "gpu_ms": 0.373961957,
      "violations": 0,
      "fallbacks": 0,
      "substeps": [
-      2
+      1
      ],
      "terms": {
-      "heston": 0.1659456
+      "heston": 0.113425067
      }
     }
    },
@@ -184,16 +184,16 @@
      "backend": "CUDA",
      "cells": 5504,
      "steps": 45,
-     "mean_ms": 0.336806667,
-     "median_ms": 0.3185,
-     "gpu_ms": 0.314691555,
+     "mean_ms": 0.305886667,
+     "median_ms": 0.2787,
+     "gpu_ms": 0.268836977,
      "violations": 0,
      "fallbacks": 0,
      "substeps": [
       1
      ],
      "terms": {
-      "heston": 0.114359467
+      "heston": 0.0982876447
      }
     }
    },
@@ -201,22 +201,22 @@
     "nx": 256,
     "cells": 21760,
     "steps": 5408,
-    "price": 6.434195934401618,
-    "err": 0.008335372739782798,
+    "price": 6.434141246477763,
+    "err": 0.008280684815927586,
     "timing": {
      "backend": "CUDA",
      "cells": 21760,
      "steps": 45,
-     "mean_ms": 0.421057778,
-     "median_ms": 0.3924,
-     "gpu_ms": 0.396892443,
+     "mean_ms": 0.313226667,
+     "median_ms": 0.2932,
+     "gpu_ms": 0.278734221,
      "violations": 0,
      "fallbacks": 0,
      "substeps": [
-      2
+      1
      ],
      "terms": {
-      "heston": 0.16947271
+      "heston": 0.0909973337
      }
     }
    },
@@ -230,16 +230,16 @@
      "backend": "CUDA",
      "cells": 87552,
      "steps": 45,
-     "mean_ms": 0.603248889,
-     "median_ms": 0.4216,
-     "gpu_ms": 0.556073243,
+     "mean_ms": 0.311022222,
+     "median_ms": 0.2859,
+     "gpu_ms": 0.277550936,
      "violations": 0,
      "fallbacks": 0,
      "substeps": [
       1
      ],
      "terms": {
-      "heston": 0.231365687
+      "heston": 0.0921130661
      }
     }
    }

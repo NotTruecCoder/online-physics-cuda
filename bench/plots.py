@@ -43,8 +43,6 @@ def load(name):
 def save(fig, name):
     os.makedirs(OUT, exist_ok=True)
     fig.savefig(os.path.join(OUT, name), bbox_inches="tight", metadata={"Date": None})
-    if os.environ.get("PLOTS_PNG"):
-        fig.savefig(os.path.join(os.environ["PLOTS_PNG"], name.replace(".svg", ".png")), bbox_inches="tight", dpi=80)
     plt.close(fig)
     print("wrote docs/figures/" + name)
 

@@ -16,7 +16,8 @@ param kappa = 1.5
 param theta = 0.04
 param rho = -0.9
 param r = 0.025
+param var_max = 0.6          # the largest cell variance (the driver sets it): the step limit, without a reduction
 
 term heston
   d V = diffuse(0.5 * var, V) - 0.5 * sig_v * gy(V) + rho * var * gx(gy(V)) + (r - 0.5 * var) * gx(V) + adv(V, 0, -kappa * (theta - var) / sig_v, 0) - r * V
-  max_dt = 0.2 * h * h / maxof(var)
+  max_dt = 0.2 * h * h / var_max

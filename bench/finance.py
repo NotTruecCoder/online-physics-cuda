@@ -172,6 +172,7 @@ def run_heston(nx_target, backend, work, p):
     args = ["--scene", scene, "--init", start, "--steps", str(steps), "--dt", repr(T / steps), "--backend", backend]
     for name in ("sig_v", "kappa", "theta", "rho", "r"):
         args += ["--param", name, repr(p[name])]
+    args += ["--param", "var_max", repr(float(v[-1]))]
     lawc(*args, "--dump", out, "--every", str(steps))
     end, _, _ = read_state(os.path.join(out, f"step_{steps}"))
     V = end["V"].reshape(ny, nx).astype(np.float64)

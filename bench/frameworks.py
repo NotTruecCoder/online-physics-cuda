@@ -229,7 +229,6 @@ def main():
         rows = [{"name": "engine, lazy readback, contracts off", "ms": e["lazy_p50_ms"], "version": "this repo"},
                 {"name": "engine, contracts on, every step read back", "ms": e["engine_step_ms"], "version": "this repo"},
                 {"name": "handwritten CUDA (ping-pong)", "ms": e["hand_ms"], "version": "bench_stencil", "card_only": True}]
-        reference = None
         for name, fn in runners:
             try:
                 ms, result, version = fn(t0, a.steps)
@@ -237,8 +236,6 @@ def main():
                 rows.append({"name": name, "ms": None, "version": f"not run: {type(ex).__name__}: {str(ex)[:120]}"})
                 print(f"n={n} {name}: not run ({ex})")
                 continue
-            if reference is None:
-                reference = numpy_step  # results compared against NumPy's after the same steps below
             rows.append({"name": name, "ms": ms, "version": version, "result": result})
             print(f"n={n} {name}: {ms:.3f} ms a step ({version})")
         # Agreement: every framework against NumPy, after the same steps.
