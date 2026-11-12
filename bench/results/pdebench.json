@@ -1,0 +1,66 @@
+{
+ "problem": {
+  "n": 128,
+  "t": 5.0,
+  "frames": 101,
+  "Du": 0.001,
+  "Dv": 0.005,
+  "k": 0.005
+ },
+ "accuracy": {
+  "engine": [
+   {
+    "cfl": 0.3,
+    "substeps_a_frame": 4,
+    "nrmse_mean": 0.0011854127374690362,
+    "nrmse_max": 0.00125467641687591
+   },
+   {
+    "cfl": 0.15,
+    "substeps_a_frame": 7,
+    "nrmse_mean": 3.4895693051319523e-05,
+    "nrmse_max": 3.629782497982598e-05
+   },
+   {
+    "cfl": 0.075,
+    "substeps_a_frame": 14,
+    "nrmse_mean": 1.5694706695403666e-06,
+    "nrmse_max": 1.631010978296973e-06
+   }
+  ],
+  "recipe_nrmse_mean": 3.03543101321551e-05,
+  "recipe_nrmse_max": 4.356092189353097e-05,
+  "recipe_seconds": 2.3786159375013085,
+  "reference_seconds": 3.821291312488029
+ },
+ "throughput": [
+  {
+   "samples": 1,
+   "card_ms_a_frame": 3.70236804,
+   "substeps": 7,
+   "seconds_a_sample": 0.37023680400000003,
+   "samples_a_second": 2.700974050110912
+  },
+  {
+   "samples": 16,
+   "card_ms_a_frame": 4.18535527,
+   "substeps": 7,
+   "seconds_a_sample": 0.026158470437499998,
+   "samples_a_second": 38.22853489806614
+  },
+  {
+   "samples": 256,
+   "card_ms_a_frame": 53.136105,
+   "substeps": 7,
+   "seconds_a_sample": 0.020756291015624997,
+   "samples_a_second": 48.17816435736116
+  },
+  {
+   "samples": 1024,
+   "card_ms_a_frame": 256.68792,
+   "substeps": 7,
+   "seconds_a_sample": 0.0250671796875,
+   "samples_a_second": 39.89280056498179
+  }
+ ]
+}

@@ -36,8 +36,8 @@ lawc --cuda                             # one translation unit, NVRTC at run tim
   prices of 512 different options in one run; Heston calibrated to a price surface by `jax.grad` through the ADI
   solver ([calibration](bench/results/calibration.md)); **reverse mode generated from the IR** (the adjoint is a law the
   engine runs on CUDA), equal to `jax.grad` to 1e-6 ([adjoint](bench/results/adjoint.md)).
-- **A standard benchmark:** PDEBench's 2-D diffusion-reaction at PDEBench's own accuracy, ~70 samples a second on a
-  laptop GPU against 3 s a sample for PDEBench's recipe ([pdebench](bench/results/pdebench.md)).
+- **A standard benchmark:** PDEBench's 2-D diffusion-reaction at PDEBench's own accuracy, 48-69 samples a second on a
+  laptop GPU against 2.4-3.1 s a sample for PDEBench's recipe ([pdebench](bench/results/pdebench.md)).
 - **Fast enough to compare:** one 7-point stencil on 256³, wall time a step: a handwritten kernel 0.50 ms, this engine
   0.75, Warp 1.67-2.24 (three runs), Taichi 4.7, PyTorch 11 ([frameworks](bench/results/frameworks.md)).
 - **Reproducible:** no float atomics, fixed-order reductions: bit-identical runs, bit-identical to the handwritten kernel.
@@ -155,29 +155,32 @@ reads it, so an operator written with shifts and its implicit solve are exactly 
 | ADI steps / explicit steps | 16 / 328 | 32 / 1 360 | 64 / 5 408 | 128 / 21 824 | 256 / 87 168 | 512 / 349 440 |
 | explicit error | −3.4e-1 | −1.1e-1 | −3.3e-3 | −9.9e-4 | −1.9e-3 | −1.2e-2 |
 
-At 2048 cells the ADI run takes 5.5 s of card time against about 150 s for the explicit one, and the self-convergence
-order (the lattice against itself, free of the truncated domain) is 2.04. At v0 = 0.2 the error goes 2.5e-2 →
+At 2048 cells the ADI run takes 4.1 s of card time against 421 s for the explicit one in the same run (the GPU hot
+throughout, 80 °C; an idle run had the explicit step at a third of that), and the self-convergence order (the lattice
+against itself, free of the truncated domain) is 2.04. At v0 = 0.2 the error goes 2.5e-2 →
 3.2e-5 at order 2.0 to 512 cells, then flattens near float32: 3.2e-5 is 3e-6 of a 12.15 price.
 
 On the card a solve is a stage: its arguments are computed over the lattice first, cell-parallel, then a thread a line
 walks them; along x a block takes 32 lines through 32 × 32 tiles in shared memory so the walk reads coalesced. Those
-two changes took a Heston step from 3.6 to 1.0 ms for one option and from 85 to 51 ms for 1024.
+two changes took a Heston step from 3.6 to 1.0 ms for one option and from 85 to 51 ms for 1024 (measured as they went
+in).
 
 ### Batches: one run, many options
 
 The Heston numbers are static fields in [heston_adi.law](bench/laws/heston_adi.law), so each z-plane is its own option
-([finance](bench/results/finance.md)), 256 cells along x, 64 steps:
+([finance](bench/results/finance.md)), 256 cells along x, 64 steps. The table's run had the GPU hot; the column
+beside it is an earlier run on a cooler card:
 
-| options in one run | card ms a step | card ms an option | options a second |
-| --- | --- | --- | --- |
-| 1 | 0.98 | 62.8 | 16 |
-| 16 | 1.71 | 6.8 | 146 |
-| 256 | 14.0 | 3.5 | 286 |
-| 1024 | 52.5 | 3.3 | **305** |
+| options in one run | card ms a step | card ms an option | options a second | the cooler run |
+| --- | --- | --- | --- | --- |
+| 1 | 1.29 | 82.2 | 12 | 16 |
+| 16 | 2.15 | 8.6 | 116 | 146 |
+| 256 | 19.6 | 4.9 | **204** | 286 |
+| 1024 | 89.7 | 5.6 | 178 | **305** |
 
 512 different options (strike 80-120, κ 0.5-3, θ 0.02-0.09, σ_v 0.2-0.6, ρ −0.9 to −0.1, r 0-0.05, v0 0.02-0.1, Feller
-holding) × 4 maturities: 2048 prices in one run of 1.4 s of card time, RMS 3.8e-3 against the characteristic function
-(the 256-cell row's accuracy). One option alone keeps the card idle: below ~16 options the step is the latency of the
+holding) × 4 maturities: 2048 prices in one run of 3.9 s of card time (1.4 s on the cooler card), RMS 3.8e-3 against
+the characteristic function (the 256-cell row's accuracy). One option alone keeps the card idle: below ~16 options the step is the latency of the
 line walks, not the cells.
 
 ### Calibration through the PDE
@@ -227,12 +230,12 @@ frame ([pdebench](bench/results/pdebench.md)):
 
 | solver | nRMSE | samples a second |
 | --- | --- | --- |
-| PDEBench's recipe (solve_ivp RK45 at its defaults, one CPU core) | 3.0e-5 | 0.3 |
-| engine, RK4, 7 substeps a frame (cfl 0.15), 1024 samples in one run | 3.5e-5 | **~70** (card time) |
+| PDEBench's recipe (solve_ivp RK45 at its defaults, one CPU core) | 3.0e-5 | 0.4 |
+| engine, RK4, 7 substeps a frame (cfl 0.15), 256 samples in one run | 3.5e-5 | **48** card time (69 on a cooler card) |
 | engine, RK4, 14 substeps a frame | 1.6e-6 (order 4.5) | twice the substeps (not timed apart) |
 
-So PDEBench's 1000-sample set is about 15 s of card time at its own accuracy, or 20x more accurate at twice that; the
-script also writes PDEBench's HDF5 layout (`--hdf5`). A neural operator trained on it is not part of this repository.
+So PDEBench's 1000-sample set is 15-21 s of card time at its own accuracy (0.7 h of the recipe on one core), or 20x
+more accurate at twice that; the script also writes PDEBench's HDF5 layout (`--hdf5`). A neural operator trained on it is not part of this repository.
 
 ### Which piece of the architecture gives which guarantee?
 

@@ -6,6 +6,7 @@
 //   lawc --scene S --steps N [--dt X] [--backend cpu|cuda|hlsl] [--learned] [--profile]
 //   lawc --scene S --steps N --compare  the CPU reference against a GPU backend, field by field
 //   lawc --scene S --steps N --dump DIR [--every K]   states as raw float32 (DIR/step_K/FIELD.bin)
+//   --dump-only F,G                     dump only these fields (a batch's static fields can be most of the bytes)
 //   --init DIR                          start from a state in that format (after the scene's ops; fields it lacks keep theirs)
 //   --param NAME VALUE                  set a param (after the scene's)
 //   --json FILE [--warmup N]            timings as JSON: mean step, card time and per-term time over the steps after N
@@ -49,6 +50,22 @@ void set_backend(const std::string& backend)
 #else
     setenv("FIELD_BACKEND", backend.c_str(), 1);
 #endif
+}
+
+// The fields to dump: all, or the comma-separated names given (in the law's order).
+bool dump_some(const FieldSet& all, const std::string& only, const std::string& dir, std::string& error)
+{
+    if (only.empty()) {
+        return dump_fields(all, dir, error);
+    }
+    FieldSet some(all.shape());
+    for (std::size_t f = 0; f < all.count(); ++f) {
+        const std::string& name = all.at(static_cast<int>(f)).name;
+        if (("," + only + ",").find("," + name + ",") != std::string::npos) {
+            some.values(some.add(name)) = all.values(static_cast<int>(f));
+        }
+    }
+    return dump_fields(some, dir, error);
 }
 
 void print_profile(const StepProfile& p)
@@ -100,6 +117,7 @@ int main(int argc, char** argv)
     std::optional<std::string> adjoint_out;
     std::optional<std::string> vjp_seed;
     std::string adjoint_term;
+    std::string dump_only;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string {
@@ -128,6 +146,7 @@ int main(int argc, char** argv)
         else if (a == "--adjoint") adjoint_out = next();
         else if (a == "--vjp") vjp_seed = next();
         else if (a == "--term") adjoint_term = next();
+        else if (a == "--dump-only") dump_only = next();
         else if (a == "--param") {
             const std::string name = next();
             param_overrides.emplace_back(name, std::atof(next().c_str()));
@@ -356,7 +375,10 @@ int main(int argc, char** argv)
               << scene.grid.ny << "x" << scene.grid.nz << " at " << scene.grid.cell << " m; " << steps << " steps of " << dt << " s on "
               << main_solver->backend_api() << (other ? std::string(" against ") + other->backend_api() : std::string()) << "\n";
     if (dump) {
-        dump_fields(main_solver->fields(), *dump + "/step_0", error);
+        if (!dump_some(main_solver->fields(), dump_only, *dump + "/step_0", error)) {
+            std::cerr << error << "\n";
+            return 1;
+        }
     }
     double total_ms = 0.0;
     std::size_t violations = 0;
@@ -393,14 +415,20 @@ int main(int argc, char** argv)
             other->step(dt);
         }
         if (dump && every > 0 && s % every == 0) {
-            dump_fields(std::as_const(*main_solver).fields(), *dump + "/step_" + std::to_string(s), error);
+            if (!dump_some(std::as_const(*main_solver).fields(), dump_only, *dump + "/step_" + std::to_string(s), error)) {
+                std::cerr << error << "\n";
+                return 1;
+            }
         }
         if (profile && (s == 1 || s == steps)) {
             print_profile(main_solver->profile());
         }
     }
     if (dump && (every <= 0 || steps % every != 0)) {
-        dump_fields(std::as_const(*main_solver).fields(), *dump + "/step_" + std::to_string(steps), error);
+        if (!dump_some(std::as_const(*main_solver).fields(), dump_only, *dump + "/step_" + std::to_string(steps), error)) {
+            std::cerr << error << "\n";
+            return 1;
+        }
     }
     std::cout << "mean step " << total_ms / steps << " ms, " << violations << " contract violation(s)\n";
     if (json_out) {

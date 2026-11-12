@@ -133,6 +133,10 @@ bool dump_fields(const FieldSet& fields, const std::string& dir, std::string& er
         meta << (i ? "," : "") << '"' << field.name << '"';
         std::ofstream out(dir + "/" + field.name + ".bin", std::ios::binary);
         out.write(reinterpret_cast<const char*>(field.values.data()), static_cast<std::streamsize>(field.values.size() * 4));
+        if (!out.flush()) {
+            error = "cannot write " + dir + "/" + field.name + ".bin (disk full?)";
+            return false;
+        }
     }
     meta << "]}\n";
     return true;

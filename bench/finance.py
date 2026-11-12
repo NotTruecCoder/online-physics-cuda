@@ -278,7 +278,7 @@ def run_heston_adi(nx_target, steps, backend, work, planes, vmax=0.6, every=None
     out = os.path.join(work, f"adi_out_{tag}")
     every = every or steps
     args = ["--scene", scene, "--init", start, "--steps", str(steps), "--dt", repr(T / steps), "--backend", backend]
-    lawc(*args, "--dump", out, "--every", str(every))
+    lawc(*args, "--dump", out, "--every", str(every), "--dump-only", "V")
     prices = []
     for s in range(every, steps + 1, every):
         V = read_state(os.path.join(out, f"step_{s}"))[0]["V"].astype(np.float64)
