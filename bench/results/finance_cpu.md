@@ -52,3 +52,24 @@ kappa 1.5, theta 0.04, sigma_v 0.3, rho -0.9, r 0.025, v0 0.04; x on ln K +- 3, 
 | heston, NumPy float64 | cpu | 32 | | | 6.79836 | +3.72e-01 |  | | |
 | heston, NumPy float64 | cpu | 64 | | | 6.08421 | -3.42e-01 | 0.12 | | |
 | heston, NumPy float64 | cpu | 128 | | | 6.31415 | -1.12e-01 | 1.61 | | |
+
+## Heston by ADI (Hundsdorfer-Verwer), implicit through `tridiag_x` / `tridiag_y`
+
+`heston_adi.law`: the same PDE, three-point operators (central drift, a forward difference on the v = 0 row), the mixed derivative explicit, the y and x parts implicit, solved in increments (the delta form) so float32 rounds changes, not prices. Steps = cells along x / 4 (dt ~ h: second order in both). Total card time = steps x card time a step; the explicit scheme's beside it, same cells.
+
+v0 = 0.04, reference 6.42586:
+
+| cells along x | steps | V(100, v0) | error | order | self-convergence order | card ms a step | card ms in all | explicit: steps, card ms in all |
+|---|---|---|---|---|---|---|---|---|
+| 64 | 16 | 6.33128 | -9.46e-02 |  |  |  |  |  |
+| 128 | 32 | 6.39569 | -3.02e-02 | 1.65 |  |  |  |  |
+| 256 | 64 | 6.42087 | -4.99e-03 | 2.60 | 1.35 |  |  |  |
+
+v0 = 0.2, reference 12.15236:
+
+| cells along x | steps | V(100, v0) | error | order | self-convergence order | card ms a step | card ms in all | explicit: steps, card ms in all |
+|---|---|---|---|---|---|---|---|---|
+| 64 | 16 | 12.12693 | -2.54e-02 |  |  |  |  |  |
+| 128 | 32 | 12.14654 | -5.82e-03 | 2.13 |  |  |  |  |
+| 256 | 64 | 12.15090 | -1.46e-03 | 2.00 | 2.17 |  |  |  |
+

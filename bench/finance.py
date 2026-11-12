@@ -311,7 +311,7 @@ def adi_sections(md, work, p, cpu_only, explicit_rows):
               "the mixed derivative explicit, the y and x parts implicit, solved in increments (the delta form) so float32 "
               "rounds changes, not prices. Steps = cells along x / 4 (dt ~ h: second order in both). Total card time = "
               "steps x card time a step; the explicit scheme's beside it, same cells.\n\n")
-    sizes = (32, 64, 128) if cpu_only else (64, 128, 256, 512, 1024, 2048)
+    sizes = (64, 128, 256) if cpu_only else (64, 128, 256, 512, 1024, 2048)  # 32 cells: too coarse to be asymptotic
     explicit = {r["nx"]: r for r in explicit_rows}
     for v0 in (0.04, 0.2):
         q = dict(p, v0=v0, K=K)
