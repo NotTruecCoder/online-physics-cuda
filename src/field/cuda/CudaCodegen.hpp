@@ -10,13 +10,14 @@
 namespace fieldengine::field::cuda {
 
 struct StageCode {
-    enum class Kind { Stored, Distance, Poisson, Reduce, Net };
+    enum class Kind { Stored, Distance, Poisson, Reduce, Net, Tridiag };
     Kind kind = Kind::Stored;
     int inst = -1;
     std::string kernel;      // computes it (Distance: the seed pass; Poisson: the source pass; Reduce: the plane pass)
     unsigned shared = 0;     // dynamic shared memory of `kernel` (nets: weights, fragments, rows)
     bool tensor = false;     // a net on tensor cores: one-dimensional launch of 128 threads
     int iterations = 0;      // Poisson
+    int axis = 0;            // Tridiag: the axis its lines run along (a thread a line)
     Op reduce = Op::SumOf;
 };
 

@@ -1423,9 +1423,10 @@ std::shared_ptr<GpuSolver> GpuSolver::create(Law& law, const GridShape& shape, s
         why = dev.why;
         return nullptr;
     }
-    // Nets are CUDA's (and the CPU's): this backend has no kernels for them.
+    // Nets, dt and tridiag are CUDA's (and the CPU's): this backend has no kernels for them.
     std::function<bool(const Node&)> uses_net = [&](const Node& n) {
-        if (n.op == Op::Mlp || n.op == Op::Flux || n.op == Op::LDiffuse) {
+        if (n.op == Op::Mlp || n.op == Op::Flux || n.op == Op::LDiffuse || n.op == Op::Dt || n.op == Op::Tridiag ||
+            n.op == Op::ShiftT || n.op == Op::GxT || n.op == Op::GyT || n.op == Op::GzT) {
             return true;
         }
         return std::any_of(n.args.begin(), n.args.end(), [&](const std::shared_ptr<Node>& a) { return uses_net(*a); });
@@ -1433,7 +1434,7 @@ std::shared_ptr<GpuSolver> GpuSolver::create(Law& law, const GridShape& shape, s
     for (const Term& term : law.terms) {
         for (const Equation& eq : term.equations) {
             if (uses_net(*eq.rhs)) {
-                why = "term '" + term.name + "' uses a net, which Direct3D 11 does not run";
+                why = "term '" + term.name + "' uses a net, dt or tridiag, which Direct3D 11 does not run";
                 return nullptr;
             }
         }

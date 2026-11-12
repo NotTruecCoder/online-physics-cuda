@@ -53,6 +53,17 @@ enum class Op {
     Mlp,      // mlp(NET, a, b, ...): the net's first output, cell by cell
     Flux,     // flux(NET, F, a, ...): F moved between neighbours by a learned, antisymmetric, limited face flux
     LDiffuse, // ldiffuse(NET, k, F): diffusion whose face flux is interpolated by learned weights over four cells
+    Dt,       // dt, the step a term is taken for (0 in a derive): what an implicit scheme needs to build its matrix
+    // tridiag_x|y|z(lo, di, up, rhs) (index = the axis): u with lo u[i-1] + di u[i] + up u[i+1] = rhs along every line of
+    // the axis, the edge cell repeating past the ends (as shift reads it). Thomas' algorithm; the implicit half of ADI.
+    Tridiag,
+    // The transposes of the stencils, for adjoints (ir/Adjoint): shift_t(F, dx, dy, dz) adds F into the cell that shift
+    // would have read it from (the edge cell gathers everything clamped onto it); gx_t, gy_t, gz_t are gx's, gy's, gz's
+    // transposes, one-sided edges included. <shift(a, d), b> = <a, shift_t(b, d)> to rounding.
+    ShiftT,
+    GxT,
+    GyT,
+    GzT,
 };
 
 struct Node {
@@ -96,6 +107,11 @@ inline bool always_scalar(const Node& node)
     case Op::Fall:
     case Op::Spread:
     case Op::Topple:
+    case Op::Tridiag:
+    case Op::ShiftT:
+    case Op::GxT:
+    case Op::GyT:
+    case Op::GzT:
         return false;
     default:
         for (const std::shared_ptr<Node>& arg : node.args) {

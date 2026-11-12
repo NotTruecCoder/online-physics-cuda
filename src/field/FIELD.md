@@ -52,6 +52,19 @@ adv(F,u,v,w)`, `shift(F,dx,dy,dz)` (F that many whole cells away, so `shift(soli
 below); global `distance(F)` (signed, metres, beyond the lattice is air) and `poisson(S[,iters])`
 (warm-started); reductions `maxof minof sumof` (the only way `max_dt` may read a field).
 
+Implicit schemes and multi-stage steps: `dt` is the step the term is taken for (0 in a derive; `max_dt` may not read
+it); `let NAME = expr` names a value inside a term (one node, computed once, however often it is used); and
+`tridiag_x|y|z(lo, di, up, rhs)` solves lo u[i-1] + di u[i] + up u[i+1] = rhs along every line of the axis (Thomas'
+algorithm, the edge cell repeating past the ends as `shift` reads it, so a three-point operator written with shifts and
+its implicit solve agree exactly). Crank-Nicolson, ADI (Hundsdorfer-Verwer for Heston: `bench/laws/heston_adi.law`) and
+RK4 (`bench/laws/diff_react.law`) are laws, not engine code. On CUDA a solve is a stage: its arguments are computed over
+the lattice first (cell-parallel), then a thread a line walks them; along x through 32 x 32 tiles in shared memory so
+the walk reads coalesced. The CPU solves in double, CUDA in float.
+
+Adjoints: `shift_t(F, dx, dy, dz)`, `gx_t gy_t gz_t` are the transposes of `shift` and `gx gy gz` (edge cells included:
+<shift(a), b> = <a, shift_t(b)>). `ir/Adjoint` turns a term into its adjoint law by one reverse sweep over the IR
+(`lawc --adjoint`); `lawc --vjp` runs it backward over the kept primal states (`bench/adjoint.py`).
+
 What a term reads and writes is **derived from its equations**, never declared by hand.
 Refused at compile time, with `source:line`: unknown names, arity, writing a `static` or derived
 field, `conserves X` on a term that never writes X, a `max_dt` that depends on a cell.
@@ -257,10 +270,16 @@ what one point of it costs with everything inlined. Then per program:
   `kInlineBudget` times the stencil's points: those are computed over the lattice first and read from memory;
 - in place: if no field the program writes is read off its own cell through what is inlined, the store happens in the
   same kernel (each thread computes all rates of its cell, then writes); otherwise gather, then store.
+- reverse mode (`ir/Adjoint.cpp`): one sweep from the highest instruction down, each adding its local derivative times
+  its adjoint to its arguments', stencils to their transposes, `lap` and `diffuse` (flux form) to themselves; the
+  output is law text (primal values and adjoints as `let`s, `d F__adj = ...` a field and a param), so the engine's
+  Euler store is the vector-Jacobian product and it runs on every backend. No adjoint (refused by name): adv,
+  tridiag, the matter-moving ops, distance, poisson, reductions, nets, diffuse with a field k.
 
 `cuda/`: the IR becomes one translation unit (a `v<id>(x, y, z)` device function per instruction, so stencils nest as
 in the HLSL backend; stage kernels; one gather kernel per program) plus the generic kernels (EDT axis passes, Jacobi,
-contracts, ring scatter and linearise). NVRTC compiles it for the card's `sm_XY`, with `--fmad=false` so the arithmetic
+contracts, ring scatter and linearise). Field reads go through `__ldg` (the read-only path; no kernel reads a cell
+another of its threads writes), and `diffuse` with one k skips the six harmonic means (k itself, as the CPU's double). NVRTC compiles it for the card's `sm_XY`, with `--fmad=false` so the arithmetic
 is the reference's; the CUBIN is cached by text. The driver API and NVRTC are loaded at run time (`CudaApi`), only the
 entry points used are declared.
 

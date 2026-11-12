@@ -94,6 +94,8 @@ public:
     int steps_taken = 0;
     bool checking = true;
     bool uploaded_once = false;
+    bool uses_dt = false;      // the law reads dt: P[1023] follows the step each program runs with
+    float dt_on_card = std::numeric_limits<float>::quiet_NaN();
     std::vector<char> known_zero, zero, touched, dirty;
     std::vector<Bounds> known, flowing;
     std::vector<ConserveCheck> conserve_checks;
@@ -140,10 +142,12 @@ public:
             why = "the law module has no grid";
             return false;
         }
-        if (law.param_values.size() > 1024) {
-            why = "more than 1024 params";
+        if (law.param_values.size() > 1023) {
+            why = "more than 1023 params"; // P[1023] is dt
             return false;
         }
+        uses_dt = std::any_of(module.insts.begin(), module.insts.end(), [](const ir::Inst& in) { return in.op == Op::Dt; });
+        dt_on_card = std::numeric_limits<float>::quiet_NaN();
         // Kernels with more shared memory than the default ask for it.
         for (const auto& [id, stage] : lay.stages) {
             if (stage.shared > 48 * 1024) {
@@ -353,6 +357,16 @@ public:
 
     // ---- stages ----------------------------------------------------------------------------------------------------
 
+    // dt as the law reads it (P[1023]); copied only when it changes. Pageable memory: the copy is staged at the call.
+    void card_dt(float v)
+    {
+        if (!uses_dt || v == dt_on_card) {
+            return;
+        }
+        dt_on_card = v;
+        dev->api.cuMemcpyHtoDAsync(param_symbol + 4ull * 1023ull, &dt_on_card, 4, dev->stream);
+    }
+
     void run_stage(int id, float dt)
     {
         const StageCode& s = lay.stages.at(id);
@@ -418,6 +432,16 @@ public:
                 int answer = slot + 1;
                 cells_launch("k_copy", {&from, &answer, &flag});
             }
+            return;
+        }
+        case StageCode::Kind::Tridiag: {
+            if (s.axis == 0) { // 32 lines a block, tiles in shared memory (CudaCodegen)
+                launch(fn(s.kernel), static_cast<unsigned>((shape.ny + 31) / 32), static_cast<unsigned>(shape.nz), 1, 32, 1, 1, 0, {&dt});
+                ++profile_.launches;
+                return;
+            }
+            const int lines = s.axis == 0 ? shape.ny * shape.nz : (s.axis == 1 ? shape.nx * shape.nz : shape.nx * shape.ny);
+            line_launch(s.kernel, static_cast<unsigned>(lines), 64, {&dt});
             return;
         }
         }
@@ -599,6 +623,7 @@ public:
             mine.push_back(c);
         }
         float sub_dt = static_cast<float>(dt / count);
+        card_dt(sub_dt);
         for (int s = 0; s < count; ++s) {
             for (const int stage : code.stages) {
                 run_stage(stage, sub_dt);
@@ -715,6 +740,7 @@ public:
                 continue;
             }
             const ProgramCode& code = lay.derives[d];
+            card_dt(0.0f); // a derive is taken for no step
             for (const int stage : code.stages) {
                 run_stage(stage, dt);
             }

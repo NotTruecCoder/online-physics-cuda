@@ -5,120 +5,120 @@
    "rows": [
     {
      "name": "engine, lazy readback, contracts off",
-     "ms": 0.4127,
+     "ms": 0.2753,
      "version": "this repo",
-     "gbs_8b": 40.65232856796705
+     "gbs_8b": 60.94157646204141
     },
     {
      "name": "engine, contracts on, every step read back",
-     "ms": 3.4146,
+     "ms": 3.0856,
      "version": "this repo",
-     "gbs_8b": 4.913376676623909
+     "gbs_8b": 5.437262120819289
     },
     {
      "name": "handwritten CUDA (ping-pong)",
-     "ms": 0.1116,
-     "card_ms": 0.101376,
+     "ms": 0.102,
+     "card_ms": 0.093184,
      "version": "bench_stencil",
-     "gbs_8b": 150.33347670250896
+     "gbs_8b": 164.48250980392157
     },
     {
      "name": "Taichi (CUDA)",
-     "ms": 0.534999999217689,
+     "ms": 0.3347000456415117,
      "version": "taichi (1, 7, 4)",
-     "max_abs_diff_vs_numpy_K": 0.00030517578125,
-     "gbs_8b": 31.359282288846188
+     "max_abs_diff_vs_numpy_K": 0.0003662109375,
+     "gbs_8b": 50.12612402798902
     },
     {
      "name": "Warp (CUDA)",
-     "ms": 0.19109994173049927,
+     "ms": 0.2037500380538404,
      "version": "warp 1.19.0",
-     "max_abs_diff_vs_numpy_K": 0.000244140625,
-     "gbs_8b": 87.79288914520052
+     "max_abs_diff_vs_numpy_K": 0.0003662109375,
+     "gbs_8b": 82.34214903835584
     },
     {
      "name": "PyTorch eager (CUDA)",
-     "ms": 1.0312499944120646,
+     "ms": 0.9235499892383814,
      "version": "torch 2.11.0+cu128",
      "max_abs_diff_vs_numpy_K": 0.0,
-     "gbs_8b": 16.268815603305786
+     "gbs_8b": 18.166007466293806
     },
     {
      "name": "Numba parallel (CPU)",
-     "ms": 1.886500045657158,
+     "ms": 2.1526499767787755,
      "version": "numba 0.61.2, 12 threads",
      "max_abs_diff_vs_numpy_K": 0.000244140625,
-     "gbs_8b": 8.89330272671989
+     "gbs_8b": 7.793750113107296
     },
     {
      "name": "NumPy (CPU, 1 thread)",
-     "ms": 48.846199992112815,
+     "ms": 63.42040002346039,
      "version": "numpy 1.26.4",
      "max_abs_diff_vs_numpy_K": 0.0,
-     "gbs_8b": 0.34347023929617887
+     "gbs_8b": 0.264539737904425
     }
    ],
-   "copy_gbs": 221.405,
+   "copy_gbs": 264.258,
    "engine_max_abs_diff_vs_hand_K": 0
   },
   "256": {
    "rows": [
     {
      "name": "engine, lazy readback, contracts off",
-     "ms": 1.4171,
+     "ms": 0.749,
      "version": "this repo",
-     "gbs_8b": 94.71295462564392
+     "gbs_8b": 179.19589853137518
     },
     {
      "name": "engine, contracts on, every step read back",
-     "ms": 24.2754,
+     "ms": 24.1529,
      "version": "this repo",
-     "gbs_8b": 5.52896051146428
+     "gbs_8b": 5.557002595961562
     },
     {
      "name": "handwritten CUDA (ping-pong)",
-     "ms": 0.5746,
-     "card_ms": 0.564224,
+     "ms": 0.5035,
+     "card_ms": 0.486336,
      "version": "bench_stencil",
-     "gbs_8b": 233.58462930734424
+     "gbs_8b": 266.5694697120159
     },
     {
      "name": "Taichi (CUDA)",
-     "ms": 3.9017999661155045,
+     "ms": 3.8480000221170485,
      "version": "taichi (1, 7, 4)",
-     "max_abs_diff_vs_numpy_K": 0.00030517578125,
-     "gbs_8b": 34.39892592280236
+     "max_abs_diff_vs_numpy_K": 0.00042724609375,
+     "gbs_8b": 34.87986674338885
     },
     {
      "name": "Warp (CUDA)",
-     "ms": 1.1542999418452382,
+     "ms": 2.067050023470074,
      "version": "warp 1.19.0",
-     "max_abs_diff_vs_numpy_K": 0.00030517578125,
-     "gbs_8b": 116.27630144851479
+     "max_abs_diff_vs_numpy_K": 0.0003662109375,
+     "gbs_8b": 64.93201735615527
     },
     {
      "name": "PyTorch eager (CUDA)",
-     "ms": 7.180799962952733,
+     "ms": 12.467699940316379,
      "version": "torch 2.11.0+cu128",
      "max_abs_diff_vs_numpy_K": 0.0,
-     "gbs_8b": 18.691194392332005
+     "gbs_8b": 10.765235660346995
     },
     {
      "name": "Numba parallel (CPU)",
-     "ms": 10.220899945124984,
+     "ms": 11.490500008221716,
      "version": "numba 0.61.2, 12 threads",
      "max_abs_diff_vs_numpy_K": 0.00030517578125,
-     "gbs_8b": 13.131693756968751
+     "gbs_8b": 11.680756094509738
     },
     {
      "name": "NumPy (CPU, 1 thread)",
-     "ms": 338.1577000254765,
+     "ms": 314.53690002672374,
      "version": "numpy 1.26.4",
      "max_abs_diff_vs_numpy_K": 0.0,
-     "gbs_8b": 0.39690868488249165
+     "gbs_8b": 0.42671536467930016
     }
    ],
-   "copy_gbs": 256.595,
+   "copy_gbs": 293.904,
    "engine_max_abs_diff_vs_hand_K": 0
   }
  }

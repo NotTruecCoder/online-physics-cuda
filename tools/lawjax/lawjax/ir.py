@@ -131,6 +131,39 @@ class Law:
             v = jnp.float32(ctx["params"][self.param_names[inst["index"]]])
         elif op == "h":
             v = jnp.float32(h)
+        elif op == "dt":
+            v = jnp.float32(ctx["dt"])
+        elif op == "tridiag":
+            # lo u[i-1] + di u[i] + up u[i+1] = rhs along the axis, the edge cell repeating past the ends (its missing
+            # neighbour's coefficient on the diagonal), as the engine solves it. Differentiable (JAX's own rules).
+            ax = AXIS[inst["index"]]
+            lo, di, up, rhs = (jnp.moveaxis(as_cell(a(k), shape), ax, -1) for k in range(4))
+            n = lo.shape[-1]
+            first = (jnp.arange(n) == 0).astype(jnp.float32)
+            last = (jnp.arange(n) == n - 1).astype(jnp.float32)
+            u = jax.lax.linalg.tridiagonal_solve(lo * (1 - first), di + lo * first + up * last, up * (1 - last), rhs[..., None])[..., 0]
+            v = jnp.moveaxis(u, -1, ax)
+        elif op in ("shift_t", "gx_t", "gy_t", "gz_t"):
+            # Transposes of shift and gx/gy/gz: each value added back into the cell its stencil read it from.
+            def transpose(f, axis, d):
+                ax = AXIS[axis]
+                n = f.shape[ax]
+                g = jnp.moveaxis(f, ax, -1)
+                idx = jnp.clip(jnp.arange(n) + d, 0, n - 1)
+                return jnp.moveaxis(jnp.zeros_like(g).at[..., idx].add(g), -1, ax)
+
+            f = as_cell(a(0), shape)
+            if op == "shift_t":
+                v = f
+                for ax in range(3):
+                    if inst["offset"][ax] != 0:
+                        v = transpose(v, ax, inst["offset"][ax])
+            else:
+                ax = {"gx_t": 0, "gy_t": 1, "gz_t": 2}[op]
+                idx, n = index_along(shape, ax)
+                span = (jnp.minimum(idx + 1, n - 1) - jnp.maximum(idx - 1, 0)).astype(jnp.float32)
+                w = jnp.where(span > 0, f / (h * jnp.maximum(span, 1.0)), 0.0)
+                v = transpose(w, ax, 1) - transpose(w, ax, -1)
         elif op == "rim":
             z, y, x = [jnp.arange(n) for n in shape]
             v = ((x[None, None, :] == 0) | (y[None, :, None] == 0) | (z[:, None, None] == 0) | (x[None, None, :] == shape[2] - 1)

@@ -28,11 +28,18 @@ lawc --cuda                             # one translation unit, NVRTC at run tim
 
 ![Convergence of the generated code](docs/figures/convergence.svg)
 
-- **Right:** order 2.0 against exact solutions, CPU = CUDA; a Black-Scholes put 1.7e-3 off the formula at S = 100
-  (RMS 1.1e-3 over S = 80..120), an American put 1.6e-3 off a binomial tree, Heston at order 2.1 (in float64; the
-  float32 state floors it near 1e-3); greeks by `jax.grad` through the solver ([finance](bench/results/finance.md)).
-- **Fast enough to compare:** one 7-point stencil on 256³, wall time a step in one run: a handwritten kernel 0.58 ms,
-  Warp 1.15, this engine 1.42, Taichi 3.9, PyTorch 7.2 ([frameworks](bench/results/frameworks.md)).
+- **Right:** order 2.0 against exact solutions, CPU = CUDA; a Black-Scholes put 1.7e-3 off the formula at S = 100,
+  an American put 1.6e-3 off a binomial tree; Heston by ADI (implicit, `tridiag_x`/`tridiag_y` ops of the language) at
+  order **2.0 up to 2048 cells**, 6e-5 off the characteristic function in 512 steps where the explicit scheme needs
+  350 000 and floors at 1e-3 ([finance](bench/results/finance.md)).
+- **Batched and differentiable:** every z-plane its own option (strike and all five Heston numbers as fields): 2048
+  prices of 512 different options in one run; Heston calibrated to a price surface by `jax.grad` through the ADI
+  solver ([calibration](bench/results/calibration.md)); **reverse mode generated from the IR** (the adjoint is a law the
+  engine runs on CUDA), equal to `jax.grad` to 1e-6 ([adjoint](bench/results/adjoint.md)).
+- **A standard benchmark:** PDEBench's 2-D diffusion-reaction at PDEBench's own accuracy, ~70 samples a second on a
+  laptop GPU against 3 s a sample for PDEBench's recipe ([pdebench](bench/results/pdebench.md)).
+- **Fast enough to compare:** one 7-point stencil on 256³, wall time a step: a handwritten kernel 0.50 ms, this engine
+  0.75, Warp 1.67-2.24 (three runs), Taichi 4.7, PyTorch 11 ([frameworks](bench/results/frameworks.md)).
 - **Reproducible:** no float atomics, fixed-order reductions: bit-identical runs, bit-identical to the handwritten kernel.
 
 ![A law param changed live in the sandbox (F1): water_level turned down, the second flood stands](docs/live_law.gif)
@@ -42,7 +49,8 @@ lawc --cuda                             # one translation unit, NVRTC at run tim
 - **Stack:** C++20, CUDA through the driver API + NVRTC loaded at run time (no CUDA SDK to build), inline PTX tensor
   cores (`mma.m16n8k16`), OpenMP CPU reference, JAX twin (`jax.grad` through the solver), bgfx/SDL3 sandbox.
 - **Compiler:** law text → SSA IR (CSE, folding, stencil radii, cost-model staging, in-place fusion, ping-pong buffers)
-  → one CUDA unit; results stay on the card until read (lazy readback).
+  → one CUDA unit; results stay on the card until read (lazy readback). Implicit solves (`tridiag_x|y|z`), `dt` and
+  `let` in the language, so Crank-Nicolson, ADI and RK4 are laws; reverse-mode AD as an IR pass whose output is a law.
 - **Learned operators:** conservative, mirror-equivariant, range-limited by construction (ablated: each piece gives
   exactly one guarantee); learned schemes run under contracts checked on the card and are undone on a breach.
 - **Results, out of sample against classical baselines:** a coarse-lattice correction cuts error 4x (28 K vs 104 K
@@ -78,21 +86,25 @@ time a step:
 
 ![Roofline: the stencil in each tool against the card's bandwidth](docs/figures/roofline.svg)
 
-Every number in this section is from one run of `perf.py` and one of `frameworks.py` (2026-11-11, the laptop warm:
-Warp's step was 0.83 ms in an earlier run and 1.15 in this one). Ratios hold better than milliseconds across runs.
+`perf.py` and `frameworks.py` were rerun 2026-11-12 (the laptop warm, its GPU near 80 °C); Warp's step at 256³ was
+0.83, 1.15, 1.67, 2.24 and 2.07 ms in five runs, so ranges are given where runs disagree.
 
-- Generated code is **1.8x the handwritten kernel** at 256³ (1.00 against 0.57 ms; it was 3x before ping-pong
-  buffers): what is left is ring addressing and the change flags.
+- Generated code was **1.8x the handwritten kernel** at 256³ in that run (1.00 against 0.57 ms; 3x before ping-pong
+  buffers). After the two changes below, a rerun on 2026-11-12 with the GPU hot (copy 180 GB/s instead of 255) gave
+  0.93 against 0.79 ms: **1.2x**. The table keeps the idle run; what is left is ring addressing and the change flags.
 - Contract checks (range, conserved total, every step) cost **+89%** of the faster kernel. A conserved total is a warp
   a row with a fixed shuffle tree, and a changed field sets its flag by a ballot: still bit-reproducible.
 - **Readback is lazy** (`Solver::set_lazy_readback`): a step at 256³ went from 25 ms (every changed field copied
   back) to 1.4 ms p50 ([tails](docs/figures/tails.svg)). The world keeps the eager copy; its mesher reads every step.
 - The same stencil in other tools, wall time a step at 256³ ([frameworks](bench/results/frameworks.md), every row
-  wall time, sorted by it): the handwritten kernel 0.58 ms (0.56 of card time), Warp 1.15, this engine 1.42, Taichi
-  3.9, PyTorch eager 7.2, Numba on 12 CPU threads 10.2, NumPy 338. Warp is 1.2x faster; the engine's step includes
-  its change flags and the bounds the idle-term test needs. The ping-pong table now goes up from pinned memory (a
-  queued copy; one from pageable memory may wait for the kernel); what that alone saves is inside this laptop's
-  run-to-run spread and was not measured apart.
+  wall time): the handwritten kernel 0.50 ms, this engine **0.75** (1.20 in another run), Warp 1.67-2.24 in the same
+  three runs, Taichi 4.7, PyTorch eager 11, Numba on 12 CPU threads 12, NumPy 335. Two changes did it: fields are read
+  through `__ldg` (the read-only path a `__restrict__` pointer argument would give; the field table stays in constant
+  memory, which costs a kernel argument's load all the same), and `diffuse` with one k skips its six harmonic means
+  (k itself, as the CPU's double gives; still bit-identical to the handwritten kernel). That took the term from 1.53
+  to 1.02 ms of card time on a loaded run. At 128³ Warp stays ahead (0.20-0.35 against 0.28 ms): there the engine's
+  host side of a step (the bounds it reads back for the idle-term test) is most of it. Ring addressing was tried as
+  a fast path for an unmoved window and measured as noise; it is out.
 - The shipped world law (43 terms, 39 fields, 1 M cells), contracts every step: CPU (OpenMP) 348 ms a step (300–410
   across runs with the laptop's clocks), CUDA **9.6 ms** with lazy readback (36x) and 13.4 ms reading every changed
   field back every step, as the sandbox does (26x) ([where the time goes](docs/figures/profile.svg)).
@@ -118,10 +130,109 @@ variance linear in y wants the arithmetic) was first order, and its 8·10⁻⁴ 
 opposite sign cancelling (the same scheme is 8.8·10⁻³ off at 512 cells with v0 = 0.2); a bilinear read-out at
 (ln 100, v0) also added an O(h²) error whose coefficient jumped with where v0 fell in its cell (bicubic now).
 Explicit Euler needs 10⁴–10⁵ steps here, and a float32 cell whose increment is nearly the
-same every step is rounded the same way every step: the engine's state, not the scheme, sets the floor. An implicit
-scheme (fewer, larger steps) or compensated sums would lift it; neither is built.
+same every step is rounded the same way every step: the engine's state, not the scheme, sets the floor. The implicit
+scheme below lifts it.
 
 Every step is bit-reproducible on one card, which for a backtest means a rerun gives the same price to the bit.
+
+### Implicit schemes: ADI as a law
+
+`tridiag_x|y|z(lo, di, up, rhs)` is Thomas' algorithm along every line of an axis, the edge cell repeating as `shift`
+reads it, so an operator written with shifts and its implicit solve are exactly each other's. With `dt` and `let`
+(names inside a term), schemes are text:
+
+- Crank-Nicolson diffusion ([diffusion_cn.law](bench/laws/diffusion_cn.law)) at 33x the explicit step: order
+  **2.00, 2.00, 2.00, 2.00** on CPU and CUDA ([verify](bench/results/verify.md)).
+- Heston by Hundsdorfer-Verwer ADI ([heston_adi.law](bench/laws/heston_adi.law)): the mixed derivative explicit, x and
+  y implicit, θ = 1/2 + √3/6, steps = cells/4. Written first in values, it lost order 2 past 1024 cells (`Y0 = U + dt
+  F(U)` at dt var / h² ≈ 136 cancels terms of 10⁴ in float32); in increments (the delta form, which solves for
+  changes) it holds:
+
+| cells along x | 64 | 128 | 256 | 512 | 1024 | 2048 |
+| --- | --- | --- | --- | --- | --- | --- |
+| ADI error, v0 = 0.04 | −9.5e-2 | −3.0e-2 | −5.0e-3 | −1.1e-3 | −2.6e-4 | **−6.4e-5** |
+| order | | 1.65 | 2.60 | 2.20 | 2.04 | **2.05** |
+| ADI steps / explicit steps | 16 / 328 | 32 / 1 360 | 64 / 5 408 | 128 / 21 824 | 256 / 87 168 | 512 / 349 440 |
+| explicit error | −3.4e-1 | −1.1e-1 | −3.3e-3 | −9.9e-4 | −1.9e-3 | −1.2e-2 |
+
+At 2048 cells the ADI run takes 5.5 s of card time against about 150 s for the explicit one, and the self-convergence
+order (the lattice against itself, free of the truncated domain) is 2.04. At v0 = 0.2 the error goes 2.5e-2 →
+3.2e-5 at order 2.0 to 512 cells, then flattens near float32: 3.2e-5 is 3e-6 of a 12.15 price.
+
+On the card a solve is a stage: its arguments are computed over the lattice first, cell-parallel, then a thread a line
+walks them; along x a block takes 32 lines through 32 × 32 tiles in shared memory so the walk reads coalesced. Those
+two changes took a Heston step from 3.6 to 1.0 ms for one option and from 85 to 51 ms for 1024.
+
+### Batches: one run, many options
+
+The Heston numbers are static fields in [heston_adi.law](bench/laws/heston_adi.law), so each z-plane is its own option
+([finance](bench/results/finance.md)), 256 cells along x, 64 steps:
+
+| options in one run | card ms a step | card ms an option | options a second |
+| --- | --- | --- | --- |
+| 1 | 0.98 | 62.8 | 16 |
+| 16 | 1.71 | 6.8 | 146 |
+| 256 | 14.0 | 3.5 | 286 |
+| 1024 | 52.5 | 3.3 | **305** |
+
+512 different options (strike 80-120, κ 0.5-3, θ 0.02-0.09, σ_v 0.2-0.6, ρ −0.9 to −0.1, r 0-0.05, v0 0.02-0.1, Feller
+holding) × 4 maturities: 2048 prices in one run of 1.4 s of card time, RMS 3.8e-3 against the characteristic function
+(the 256-cell row's accuracy). One option alone keeps the card idle: below ~16 options the step is the latency of the
+line walks, not the cells.
+
+### Calibration through the PDE
+
+Heston's κ, θ, σ_v, ρ, v0 fitted to 27 puts (9 strikes × 3 maturities) by L-BFGS-B, the loss and its gradient by
+`jax.value_and_grad` through every ADI step of the JAX twin, strikes as z-planes, the variance lattice moving with
+σ_v ([calibrate.py](bench/calibrate.py), [calibration](bench/results/calibration.md)):
+
+| | κ | θ | σ_v | ρ | v0 |
+| --- | --- | --- | --- | --- | --- |
+| true | 1.5 | 0.04 | 0.3 | −0.7 | 0.05 |
+| start | 2.5 | 0.06 | 0.45 | −0.3 | 0.03 |
+| fit through the PDE, 128 cells | 1.77 | 0.0402 | 0.272 | −0.83 | 0.0499 |
+| fit through the PDE, 256 cells | **1.56** | **0.0400** | **0.293** | **−0.73** | **0.0500** |
+| the characteristic function fitted itself | 1.50 | 0.0400 | 0.300 | −0.70 | 0.0500 |
+
+The gradient agrees with central differences of the same float32 loss to 3e-4-6e-3 and costs 2.9-3.9 losses for all
+five numbers (central differences cost 10). What is left between the fit and the truth is the lattice's pricing
+error turned into the least identifiable numbers (κ, ρ), and it shrinks with the lattice. With 0.1-cent noise on every
+price the 256-cell fit is κ 1.57, ρ −0.73.
+
+### Reverse mode in the IR
+
+`lawc --adjoint` turns a term into its adjoint law: one reverse sweep over the term's SSA instructions, each adding
+its local derivative times its adjoint to its arguments', stencils to their transposes (`shift_t`, `gx_t`; `lap` and
+the flux-form `diffuse` are symmetric). The output is law text, so the adjoint runs wherever laws run; `lawc --vjp`
+runs the primal forward, keeps the states, and runs the adjoint backward ([adjoint.py](bench/adjoint.py),
+[adjoint](bench/results/adjoint.md)):
+
+| check | CPU | CUDA |
+| --- | --- | --- |
+| <op(a), b> = <a, op_t(b)> for shift, gx, gy, gz on 7 × 6 × 5 | 3.4e-7 | 3.4e-7 |
+| Black-Scholes, 410 steps: dV(100)/dV0, /dσ, /dr against `jax.grad` | 3.1e-7, 1.2e-6, 2.4e-6 | 2.5e-7, 1.2e-6, 2.5e-6 |
+| vega 37.5123, rho −41.909 against the formula's 37.5240, −41.890 | 3.1e-4, 4.4e-4 (the lattice's own error) | same |
+| Heston, 328 steps, every cell weighed: dL/dV0, κ, θ, ρ, r, σ_v | ≤ 2.7e-6 | ≤ 2.1e-6 |
+
+Two implementations of AD (this pass over the C++ IR, and JAX over the Python twin) agree to float32 rounding. Not
+yet: checkpointing (the backward pass keeps every primal state on the host and uploads each), and adjoints of adv,
+tridiag, the matter-moving ops and nets (refused by name).
+
+### A standard benchmark: PDEBench
+
+PDEBench's 2-D diffusion-reaction (FitzHugh-Nagumo, 128², t ∈ [0, 5], 101 frames, its `diff-react.yaml`) is
+[diff_react.law](bench/laws/diff_react.law): PDEBench's spatial operator exactly (zero-flux walls), RK4 written in
+`let`s, a sample a z-plane. Against the same method of lines at tight tolerance (DOP853, rtol 1e-10), nRMSE over every
+frame ([pdebench](bench/results/pdebench.md)):
+
+| solver | nRMSE | samples a second |
+| --- | --- | --- |
+| PDEBench's recipe (solve_ivp RK45 at its defaults, one CPU core) | 3.0e-5 | 0.3 |
+| engine, RK4, 7 substeps a frame (cfl 0.15), 1024 samples in one run | 3.5e-5 | **~70** (card time) |
+| engine, RK4, 14 substeps a frame | 1.6e-6 (order 4.5) | twice the substeps (not timed apart) |
+
+So PDEBench's 1000-sample set is about 15 s of card time at its own accuracy, or 20x more accurate at twice that; the
+script also writes PDEBench's HDF5 layout (`--hdf5`). A neural operator trained on it is not part of this repository.
 
 ### Which piece of the architecture gives which guarantee?
 
@@ -192,23 +303,22 @@ replay holds few such transitions. Its 12-step cost forecast is worse than persi
 - The compiler is correct: the right orders of convergence, bit-identical to a handwritten kernel, 1e-7 against the
   CPU and JAX references. It is close to, not at, the bandwidth floor: a term runs at 1.6-1.9x a handwritten kernel
   (run to run) and a step (lazy readback) at 1.2x Warp's on the same stencil.
-- It prices options: Black-Scholes at second order, the American put close to its tree, Heston second order in its
-  scheme but capped near 10⁻³ by float32 over the explicit scheme's 10⁴+ steps; a strike × maturity surface in one
-  run; greeks through the JAX twin.
+- It prices options: Black-Scholes at second order, the American put close to its tree, Heston by ADI at second order
+  to 2048 cells in hundreds of steps (the explicit scheme's float32 floor at 10⁻³ named, not hidden); hundreds of
+  different options a second in one run; calibration by `jax.grad`; greeks by the engine's own reverse mode, on CUDA.
 - Learned operators with built-in guarantees work as designed, and the guard catches what the law declares (only
   that: an oscillation inside the declared range passes it; see gate `guarded`).
 - Of the three models, only the coarse-lattice correction clearly beats its classical alternatives out of sample, and
   even it costs more than running finer at this scale. The learned discretization loses to plain substeps. The world
   model plans well but does not generalise as a simulator.
-- Not done: an implicit scheme (Crank-Nicolson / ADI, which needs a tridiagonal solve as an op of the language) or
-  compensated float32 state, either of which would lift Heston's floor; a batch over model parameters (params are
-  scalars; only strikes and maturities batch today); Heston calibration by `jax.grad` against a market surface;
-  multi-GPU; reverse-mode AD in the IR (gradients go through the JAX twin today); a SIMD CPU backend; a standard
-  learned-PDE benchmark (PDEBench, Kochkov 2021); flowing rivers; a learned simulator over the engine's own fields
-  with the guard as its safety net (the natural next model).
+- Not done: checkpointed reverse mode (states kept on the card) and adjoints of tridiag and adv; a neural operator
+  trained on the PDEBench data the engine generates (the two negative model results stand as they are); a faster
+  tridiagonal solve for one small option (cyclic reduction instead of a thread a line); compensated float32 state;
+  multi-GPU; a SIMD CPU backend; flowing rivers; a learned simulator over the engine's own fields with the guard as its
+  safety net (the natural next model).
 - Gates: all pass on Windows; CI runs the compiler's and the fast world gates on Linux on every push, and the orders
-  of convergence and the finance PDEs on the CPU reference with their orders asserted (`verify.py`, `finance.py
-  --cpu`); the five slow world gates weekly ([slow-gates](.github/workflows/slow-gates.yml)). GCC found a dangling
+  of convergence, the finance PDEs (ADI among them) and the IR's reverse mode against `jax.grad` on the CPU reference,
+  each asserted (`verify.py`, `finance.py --cpu`, `adjoint.py`); the five slow world gates weekly ([slow-gates](.github/workflows/slow-gates.yml)). GCC found a dangling
   reference MSVC hid (WorldModel, fixed).
 
 ## What it is
@@ -239,6 +349,17 @@ term heat
   max_dt = 0.15 * h * h / k
   learned d T = ldiffuse(heat_ld, k, T)          # learned discretization at a larger step, under guard
   learned max_dt = 0.3 * h * h / k
+
+term crank_nicolson                              # implicit: no max_dt
+  let a = 0.5 * k * dt / (h * h)
+  d T = (tridiag_x(0 - a, 1 + 2 * a, 0 - a, T + a * (shift(T, 1, 0, 0) - 2 * T + shift(T, -1, 0, 0))) - T) / dt
+```
+
+```
+lawc --adjoint adj.law --term black_scholes      # reverse mode, as a law
+  let av__4 = (av__11 * r) + gx_t(av__8) + diffuse(pv__3, av__5)
+  d V__adj = av__4                               # V_bar = A + dt (dR/dV)^T A
+  d sig__adj = av__1                             # its total over the lattice: dL/dsig
 ```
 
 - **A compiler, not an interpreter.** One immutable SSA graph for the whole law (on the shipped law 340 of 622

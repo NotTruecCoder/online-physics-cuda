@@ -36,7 +36,7 @@ struct Grid {
     const frag2* NF; // net weights as tensor-core fragments
 };
 __constant__ Grid G;
-__constant__ float P[1024];
+__constant__ float P[1024]; // the law's params; P[1023] is dt, the step the running program is taken for (0 in a derive)
 // Where each field lives now, and the buffer a term that reads its own neighbours writes its next values to: after it
 // runs, the host swaps the two (ping-pong), so the step moves one read and one write a cell, not a delta through D.
 struct FieldPair { float* now; float* next; };
@@ -53,6 +53,11 @@ __device__ __forceinline__ int ex(int v) { return v < 0 ? 0 : (v >= G.nx ? G.nx 
 __device__ __forceinline__ int ey(int v) { return v < 0 ? 0 : (v >= G.ny ? G.ny - 1 : v); }
 __device__ __forceinline__ int ez(int v) { return v < 0 ? 0 : (v >= G.nz ? G.nz - 1 : v); }
 __device__ __forceinline__ bool inside(int x, int y, int z) { return x >= 0 && y >= 0 && z >= 0 && x < G.nx && y < G.ny && z < G.nz; }
+// The cells i along an axis whose clamp(i + d) is j: one run (j - d inside; what is clamped onto an edge cell there).
+__device__ __forceinline__ void run_to(int j, int d, int n, int& lo, int& hi)
+{
+    lo = imax(j == 0 ? 0 : j - d, 0); hi = imin(j == n - 1 ? n - 1 : j - d, n - 1);
+}
 __device__ __forceinline__ float dv(float a, float b) { return b == 0.f ? 0.f : a / b; }
 __device__ __forceinline__ float sat(float v) { return fminf(fmaxf(v, 0.f), 1.f); }
 __device__ __forceinline__ float face(float ka, float kb, float va, float vb)
@@ -62,6 +67,10 @@ __device__ __forceinline__ float face(float ka, float kb, float va, float vb)
 }
 #define AT(slot, x, y, z) G.A[(u64)(slot) * G.cells + I(x, y, z)]
 #define FIELD(f, x, y, z) FT[f].now[I(x, y, z)]
+// What the law's expressions read of a field: through the read-only path (what __restrict__ buys a kernel argument). No
+// generated kernel reads a cell another thread of it writes: a kernel that reads its targets off their own cell
+// ping-pongs, and one that stores in place reads them only at the cell it stores.
+#define FREAD(f, x, y, z) __ldg(FT[f].now + I(x, y, z))
 #define CELL_HEAD const int x = blockIdx.x * blockDim.x + threadIdx.x; const int y = blockIdx.y * blockDim.y + threadIdx.y; \
     const int z = blockIdx.z; if (x >= G.nx || y >= G.ny) return;
 
@@ -349,6 +358,12 @@ private:
                 lay_.aux_slots += 3; // the source as last solved, phi (the answer), phi'
                 lay_.flag[static_cast<std::size_t>(id)] = lay_.flags++;
                 break;
+            case Op::Tridiag:
+                s.kind = StageCode::Kind::Tridiag;
+                s.axis = in.index;
+                lay_.slot[static_cast<std::size_t>(id)] = lay_.aux_slots;
+                lay_.aux_slots += 2; // the answer (the sweep's d' first), the sweep's c'
+                break;
             case Op::MaxOf: case Op::MinOf: case Op::SumOf:
                 s.kind = StageCode::Kind::Reduce;
                 s.reduce = in.op;
@@ -413,9 +428,10 @@ private:
         case Op::Const: simple(literal(in.number)); break;
         case Op::Param: simple("P[" + std::to_string(in.index) + "]"); break;
         case Op::Cell: simple("G.h"); break;
+        case Op::Dt: simple("P[1023]"); break;
         case Op::Rim: simple("(x == 0 || y == 0 || z == 0 || x + 1 == G.nx || y + 1 == G.ny || z + 1 == G.nz) ? 1.f : 0.f"); break;
         case Op::Local: simple("0.f"); break;
-        case Op::Field: simple("FIELD(" + std::to_string(in.index) + ", x, y, z)"); break;
+        case Op::Field: simple("FREAD(" + std::to_string(in.index) + ", x, y, z)"); break;
         case Op::Neg: simple("-" + a(0)); break;
         case Op::Abs: simple("fabsf(" + a(0) + ")"); break;
         case Op::Sqrt: simple("sqrtf(fmaxf(0.f, " + a(0) + "))"); break;
@@ -437,6 +453,24 @@ private:
             simple(a(0, "ex(x + " + std::to_string(in.offset[0]) + ")", "ey(y + " + std::to_string(in.offset[1]) + ")",
                 "ez(z + " + std::to_string(in.offset[2]) + ")"));
             break;
+        case Op::ShiftT:
+            f << "{ int lx, hx, ly, hy, lz, hz; run_to(x, " << in.offset[0] << ", G.nx, lx, hx); run_to(y, " << in.offset[1]
+              << ", G.ny, ly, hy); run_to(z, " << in.offset[2] << ", G.nz, lz, hz);\n"
+              << "    float s = 0.f; for (int k = lz; k <= hz; ++k) for (int j = ly; j <= hy; ++j) for (int i = lx; i <= hx; ++i) s += "
+              << a(0, "i", "j", "k") << ";\n    return s; }\n";
+            break;
+        case Op::GxT: case Op::GyT: case Op::GzT: {
+            const int axis = in.op == Op::GxT ? 0 : (in.op == Op::GyT ? 1 : 2);
+            const char* c = axis == 0 ? "x" : (axis == 1 ? "y" : "z");
+            const char* n = axis == 0 ? "G.nx" : (axis == 1 ? "G.ny" : "G.nz");
+            const std::string at_q = axis == 0 ? a(0, "q", "y", "z") : (axis == 1 ? a(0, "x", "q", "z") : a(0, "x", "y", "q"));
+            f << "{ float s = 0.f;\n"
+              << "    for (int d = 1; d >= -1; d -= 2) { int lo, hi; run_to(" << c << ", d, " << n << ", lo, hi);\n"
+              << "        for (int q = lo; q <= hi; ++q) { const int span = imin(q + 1, " << n << " - 1) - imax(q - 1, 0);\n"
+              << "            const float w = span > 0 ? " << at_q << " / (G.h * span) : 0.f; s += d > 0 ? w : -w; } }\n"
+              << "    return s; }\n";
+            break;
+        }
         case Op::Lap:
             // Differences first: a flat field is exactly flat.
             f << "{ const float c = " << a(0) << "; return ((" << a(0, "ex(x - 1)") << " - c) + (" << a(0, "ex(x + 1)") << " - c) + ("
@@ -456,6 +490,20 @@ private:
               << a(0, "x", "y", "hi") << " - " << a(0, "x", "y", "lo") << ") / (G.h * span) : 0.f; }\n";
             break;
         case Op::Diffuse: {
+            if (at(in.args[0]).shape == ir::Shape::Scalar) {
+                // One k everywhere: every face's harmonic mean is k itself (the CPU's, in double, is exactly k), so the
+                // six divisions go and k multiplies the sum of the differences once.
+                f << "{ const float c = " << a(1) << "; float acc = 0.f;\n";
+                const char* sides[6][4] = {{"x > 0", "x - 1", "y", "z"}, {"x + 1 < G.nx", "x + 1", "y", "z"},
+                    {"y > 0", "x", "y - 1", "z"}, {"y + 1 < G.ny", "x", "y + 1", "z"}, {"z > 0", "x", "y", "z - 1"},
+                    {"z + 1 < G.nz", "x", "y", "z + 1"}};
+                for (const auto& side : sides) {
+                    f << "    if (" << side[0] << ") acc += " << a(1, side[1], side[2], side[3]) << " - c;\n";
+                }
+                // A face of k <= 0 conducts nothing, as on the CPU.
+                f << "    return fmaxf(" << a(0) << ", 0.f) * acc / (G.h * G.h); }\n";
+                break;
+            }
             f << "{ const float ka = " << a(0) << "; const float c = " << a(1) << "; float acc = 0.f;\n";
             const char* sides[6][4] = {{"x > 0", "x - 1", "y", "z"}, {"x + 1 < G.nx", "x + 1", "y", "z"},
                 {"y > 0", "x", "y - 1", "z"}, {"y + 1 < G.ny", "x", "y + 1", "z"}, {"z > 0", "x", "y", "z - 1"},
@@ -536,6 +584,11 @@ private:
             simple(s >= 0 ? "AT(" + std::to_string(s + 1) + ", x, y, z)" : "0.f");
             break;
         }
+        case Op::Tridiag: {
+            const int s = lay_.slot[static_cast<std::size_t>(id)];
+            simple(s >= 0 ? "AT(" + std::to_string(s) + ", x, y, z)" : "0.f");
+            break;
+        }
         case Op::MaxOf: case Op::MinOf: case Op::SumOf: {
             const int u = lay_.uslot[static_cast<std::size_t>(id)];
             simple(u >= 0 ? "G.U[" + std::to_string(u) + "]" : "0.f");
@@ -605,6 +658,59 @@ private:
         case StageCode::Kind::Net:
             net_kernel(id, s);
             break;
+        case StageCode::Kind::Tridiag: {
+            // A thread a line: Thomas' forward sweep (c', d' stored), then back. The edge cell repeats past the ends, so
+            // the missing neighbour's coefficient lands on the diagonal (the CPU reference does the same, in double).
+            static const char* lines[3] = {"G.ny * G.nz) return; int x = 0; int y = k % G.ny; int z = k / G.ny; const int n = G.nx;",
+                "G.nx * G.nz) return; int x = k % G.nx; int y = 0; int z = k / G.nx; const int n = G.ny;",
+                "G.nx * G.ny) return; int x = k % G.nx; int y = k / G.nx; int z = 0; const int n = G.nz;"};
+            const char* c = s.axis == 0 ? "x" : (s.axis == 1 ? "y" : "z");
+            const std::string ans = std::to_string(slot);
+            const std::string cs = std::to_string(slot + 1);
+            if (s.axis == 0) {
+                // Along x a thread a line would read with a stride of a row: 32 lines a block instead, through 32 x 32
+                // tiles in shared memory, so the arguments are evaluated and stored by consecutive threads at consecutive
+                // x (coalesced), and each thread runs its line's recurrence over the tile. The same arithmetic, in order.
+                out_ << "extern \"C\" __global__ void " << name << "(float DT) {\n"
+                     << "    __shared__ float ta[32][33]; __shared__ float tb[32][33]; __shared__ float tc[32][33]; __shared__ float td[32][33];\n"
+                     << "    const int tx = threadIdx.x; const int y0 = blockIdx.x * 32; const int z = blockIdx.y; const int n = G.nx;\n"
+                     << "    float cp = 0.f; float dp = 0.f;\n"
+                     << "    for (int x0 = 0; x0 < n; x0 += 32) { const int x = x0 + tx;\n"
+                     << "        for (int j = 0; j < 32; ++j) { const int y = y0 + j; float a = 0.f; float b = 1.f; float u = 0.f; float d = 0.f;\n"
+                     << "            if (x < n && y < G.ny) { a = " << v(in.args[0]) << "; u = " << v(in.args[2]) << "; b = " << v(in.args[1])
+                     << "; if (x == 0) b += a; if (x + 1 == n) b += u; d = " << v(in.args[3]) << "; }\n"
+                     << "            ta[j][tx] = a; tb[j][tx] = b; tc[j][tx] = u; td[j][tx] = d; }\n"
+                     << "        __syncthreads();\n"
+                     << "        { const int m = imin(32, n - x0); for (int i = 0; i < m; ++i) { const float a = ta[tx][i]; const float den = tb[tx][i] - a * cp;\n"
+                     << "            dp = (td[tx][i] - a * dp) / den; cp = x0 + i + 1 == n ? 0.f : tc[tx][i] / den; tc[tx][i] = cp; td[tx][i] = dp; } }\n"
+                     << "        __syncthreads();\n"
+                     << "        for (int j = 0; j < 32; ++j) { const int y = y0 + j; if (x < n && y < G.ny) { AT(" << ans << ", x, y, z) = td[j][tx]; AT(" << cs
+                     << ", x, y, z) = tc[j][tx]; } }\n"
+                     << "        __syncthreads(); }\n"
+                     << "    float next = 0.f;\n"
+                     << "    for (int x0 = ((n - 1) / 32) * 32; x0 >= 0; x0 -= 32) { const int x = x0 + tx;\n"
+                     << "        for (int j = 0; j < 32; ++j) { const int y = y0 + j; if (x < n && y < G.ny) { tc[j][tx] = AT(" << cs << ", x, y, z); td[j][tx] = AT("
+                     << ans << ", x, y, z); } }\n"
+                     << "        __syncthreads();\n"
+                     << "        { const int m = imin(32, n - x0); for (int i = m - 1; i >= 0; --i) { next = td[tx][i] - tc[tx][i] * next; td[tx][i] = next; } }\n"
+                     << "        __syncthreads();\n"
+                     << "        for (int j = 0; j < 32; ++j) { const int y = y0 + j; if (x < n && y < G.ny) AT(" << ans << ", x, y, z) = td[j][tx]; }\n"
+                     << "        __syncthreads(); }\n}\n";
+                break;
+            }
+            out_ << "extern \"C\" __global__ void " << name << "(float DT) {\n"
+                 << "    const int k = blockIdx.x * blockDim.x + threadIdx.x; if (k >= " << lines[s.axis] << "\n"
+                 << "    float cp = 0.f; float dp = 0.f;\n"
+                 << "    for (int i = 0; i < n; ++i) { " << c << " = i;\n"
+                 << "        const float a = " << v(in.args[0]) << "; const float u = " << v(in.args[2]) << ";\n"
+                 << "        float b = " << v(in.args[1]) << "; if (i == 0) b += a; if (i + 1 == n) b += u;\n"
+                 << "        const float m = b - a * cp; dp = (" << v(in.args[3]) << " - a * dp) / m; cp = i + 1 == n ? 0.f : u / m;\n"
+                 << "        AT(" << ans << ", x, y, z) = dp; AT(" << cs << ", x, y, z) = cp; }\n"
+                 << "    float next = 0.f;\n"
+                 << "    for (int i = n - 1; i >= 0; --i) { " << c << " = i; next = AT(" << ans << ", x, y, z) - AT(" << cs
+                 << ", x, y, z) * next; AT(" << ans << ", x, y, z) = next; }\n}\n";
+            break;
+        }
         }
     }
 

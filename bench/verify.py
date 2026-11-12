@@ -6,6 +6,8 @@ the lattice:
   diffusion  dT/dt = k lap T on [0, 1] with zero-flux ends, T0 = 1 + cos(4 pi x): T = 1 + cos(4 pi x) exp(-k 16 pi^2 t).
              Flux-form second-order stencil, explicit Euler with the law's max_dt (dt ~ h^2): expected order 2.
   advection  dF/dt + u dF/dx = 0, a Gaussian carried 0.4 to the right: first-order upwind, expected order 1.
+  implicit   the diffusion problem by Crank-Nicolson, its implicit half through tridiag_x (Thomas' algorithm, an op of
+             the language), dt ~ h (k dt / h^2 up to 5, 33x the explicit limit): expected order 2.
 
 The state is float32: with a lower mode (cos(pi x)) the error reaches a round-off floor near 1e-5 by n = 128, which is
 why the mode here is high enough to keep the truncation error above it. Also the conservation drift of the diffusion runs (the total of T, in float32, over thousands of substeps).
@@ -22,6 +24,7 @@ from common import BUILD, HERE, cuda_available, lawc, read_state, save, write_sc
 
 DIFF_LAW = os.path.join(HERE, "laws", "diffusion.law")
 ADV_LAW = os.path.join(HERE, "laws", "advection.law")
+CN_LAW = os.path.join(HERE, "laws", "diffusion_cn.law")
 
 
 def cell_centres(n):
@@ -72,6 +75,18 @@ def main():
                 exact = np.exp(-((x - 0.3 - u * t_end) / 0.05) ** 2)
                 errs_a.append(float(np.sqrt(np.mean((got - exact) ** 2))))
             results[f"advection_{backend}"] = {"n": ns_a, "l2": errs_a, "order": orders(errs_a)}
+
+            # ---- implicit diffusion: Crank-Nicolson through tridiag_x ------------------------------------------
+            k, t_end, m = 0.01, 0.5, 4
+            errs_i = []
+            for n in ns:
+                x = cell_centres(n)
+                got = run(CN_LAW, "T", 1.0 + np.cos(m * np.pi * x), n, t_end, max(n // 4, 2), backend, work)
+                exact = 1.0 + np.cos(m * np.pi * x) * np.exp(-k * (m * np.pi) ** 2 * t_end)
+                errs_i.append(float(np.sqrt(np.mean((got - exact) ** 2))))
+            results[f"implicit_{backend}"] = {"n": ns, "l2": errs_i, "order": orders(errs_i), "steps": [max(n // 4, 2) for n in ns]}
+            print(f"{backend}: implicit (Crank-Nicolson) L2 {['%.2e' % e for e in errs_i]} orders {['%.2f' % o for o in orders(errs_i)]}")
+            assert min(orders(errs_i)) > 1.8, f"{backend}: Crank-Nicolson order {orders(errs_i)}"
 
             d, a = results[f"diffusion_{backend}"], results[f"advection_{backend}"]
             print(f"{backend}: diffusion L2 {['%.2e' % e for e in d['l2']]} orders {['%.2f' % o for o in d['order']]}; "

@@ -11,12 +11,19 @@
 //   --json FILE [--warmup N]            timings as JSON: mean step, card time and per-term time over the steps after N
 //   --eager                             on a GPU, every changed field back to the host every step (as the sandbox,
 //                                       whose mesher reads them), not only when dumped or compared
+//   --adjoint OUT [--term T]            the adjoint law of term T (the first by default), generated from the IR
+//   --vjp SEED [--term T] --steps N --dump DIR
+//                                       reverse mode: N steps forward (each state kept), then the adjoint law N steps
+//                                       back from the cotangent in SEED (FIELD__adj.bin, the --dump format); writes the
+//                                       adjoints (fields and params) to DIR/adjoint
 //
 // Laws come from the command line, or from the scene's `law` lines.
 #include "field/Law.hpp"
 #include "field/Scene.hpp"
 #include "field/Solver.hpp"
 #include "field/cuda/CudaSolver.hpp"
+#include "field/LawBounds.hpp"
+#include "field/ir/Adjoint.hpp"
 #include "field/ir/LawIR.hpp"
 
 #include <algorithm>
@@ -90,6 +97,9 @@ int main(int argc, char** argv)
     int warmup = 0;
     std::vector<std::pair<std::string, double>> param_overrides;
     std::optional<GridShape> grid;
+    std::optional<std::string> adjoint_out;
+    std::optional<std::string> vjp_seed;
+    std::string adjoint_term;
     for (int i = 1; i < argc; ++i) {
         const std::string a = argv[i];
         auto next = [&]() -> std::string {
@@ -115,6 +125,9 @@ int main(int argc, char** argv)
         else if (a == "--init") init_dir = next();
         else if (a == "--json") json_out = next();
         else if (a == "--warmup") warmup = std::atoi(next().c_str());
+        else if (a == "--adjoint") adjoint_out = next();
+        else if (a == "--vjp") vjp_seed = next();
+        else if (a == "--term") adjoint_term = next();
         else if (a == "--param") {
             const std::string name = next();
             param_overrides.emplace_back(name, std::atof(next().c_str()));
@@ -129,7 +142,8 @@ int main(int argc, char** argv)
         } else if (a == "--help" || a == "-h") {
             std::cout << "lawc [--ir] [--ir-json F] [--cuda F] [--scene S] [--grid NX NY NZ H] [--steps N] [--dt X]\n"
                          "     [--backend cpu|cuda|hlsl] [--learned] [--profile] [--eager] [--compare] [--dump DIR [--every K]]\n"
-                         "     [--init DIR] [--param NAME VALUE]... [--json FILE [--warmup N]] LAW...\n";
+                         "     [--init DIR] [--param NAME VALUE]... [--json FILE [--warmup N]]\n"
+                         "     [--adjoint OUT] [--vjp SEED] [--term T] LAW...\n";
             return 0;
         } else {
             law_paths.push_back(a);
@@ -189,6 +203,18 @@ int main(int argc, char** argv)
         std::ofstream(*cuda_out) << CudaSolver::source(law);
         std::cout << "CUDA written to " << *cuda_out << "\n";
     }
+    std::string adjoint_text;
+    if (adjoint_out || vjp_seed) {
+        adjoint_text = ir::adjoint_law(law, adjoint_term, error);
+        if (adjoint_text.empty()) {
+            std::cerr << "no adjoint: " << error << "\n";
+            return 1;
+        }
+        if (adjoint_out) {
+            std::ofstream(*adjoint_out) << adjoint_text;
+            std::cout << "adjoint law written to " << *adjoint_out << "\n";
+        }
+    }
     if (steps <= 0) {
         return 0;
     }
@@ -225,6 +251,95 @@ int main(int argc, char** argv)
         }
         return solver;
     };
+
+    if (vjp_seed) {
+        // Reverse mode: the primal forward, every state the differentiated term starts from kept; then the adjoint law
+        // backward over them. Only that term may move anything (the others' rates are zero), each step one substep.
+        std::size_t term = 0;
+        while (!adjoint_term.empty() && term < law.terms.size() && law.terms[term].name != adjoint_term) {
+            ++term;
+        }
+        std::optional<Solver> primal = make(backend);
+        if (!primal) {
+            return 1;
+        }
+        const std::vector<char> none(law.fields.size(), 0);
+        for (std::size_t t = 0; t < law.terms.size(); ++t) {
+            for (const Equation& eq : law.terms[t].equations) {
+                if (t != term && !always_zero(*eq.rhs, none, primal->law().param_values)) {
+                    std::cerr << "--vjp differentiates term '" << law.terms[term].name << "' alone; term '" << law.terms[t].name
+                              << "' moves something too\n";
+                    return 1;
+                }
+            }
+        }
+        const CompileResult adj_compiled = compile_law({LawSource{"adjoint", adjoint_text}});
+        for (const std::string& e : adj_compiled.errors) {
+            std::cerr << e << "\n";
+        }
+        if (!adj_compiled.law) {
+            return 1;
+        }
+        const Law& adj_law = *adj_compiled.law;
+        std::vector<std::pair<int, int>> inputs; // (primal field, adjoint-law field)
+        for (std::size_t f = 0; f < adj_law.fields.size(); ++f) {
+            const int in_primal = law.field_id(adj_law.fields[f].name);
+            if (in_primal >= 0 && adj_law.fields[f].is_static) {
+                inputs.emplace_back(in_primal, static_cast<int>(f));
+            }
+        }
+        std::vector<std::vector<std::vector<float>>> states;
+        const auto forward_start = std::chrono::steady_clock::now();
+        for (int s = 0; s < steps; ++s) {
+            std::vector<std::vector<float>> state;
+            for (const auto& [from, to] : inputs) {
+                state.push_back(std::as_const(*primal).values(from));
+            }
+            states.push_back(std::move(state));
+            primal->step(dt);
+            if (primal->last_substeps()[term] != 1) {
+                std::cerr << "--vjp: the term took " << primal->last_substeps()[term] << " substeps; give a dt within its max_dt\n";
+                return 1;
+            }
+        }
+        const double forward_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - forward_start).count();
+        Solver adj(adj_law, scene.grid);
+        for (std::size_t i = 0; i < law.param_names.size(); ++i) {
+            adj.set_param(law.param_names[i], *primal->param(law.param_names[i]));
+        }
+        if (!load_fields(adj.fields(), *vjp_seed, error)) {
+            std::cerr << error << "\n";
+            return 1;
+        }
+        if (backend != "cpu") {
+            set_backend(backend);
+            std::string why;
+            if (!adj.use_gpu(why)) {
+                std::cerr << "no " << backend << " backend for the adjoint: " << why << "\n";
+                return 1;
+            }
+            adj.check_contracts_every(1000000);
+            adj.set_lazy_readback(true);
+        }
+        double card_ms = 0.0;
+        const auto backward_start = std::chrono::steady_clock::now();
+        for (int s = steps - 1; s >= 0; --s) {
+            FieldSet& f = adj.fields();
+            for (std::size_t i = 0; i < inputs.size(); ++i) {
+                f.values(inputs[i].second) = states[static_cast<std::size_t>(s)][i];
+            }
+            adj.step(dt);
+            card_ms += adj.profile().gpu_ms;
+        }
+        const double backward_ms = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - backward_start).count();
+        std::cout << "vjp of '" << law.terms[term].name << "' over " << steps << " steps on " << adj.backend_api() << ": forward "
+                  << forward_ms << " ms, backward " << backward_ms << " ms (card " << card_ms << " ms)\n";
+        if (dump && !dump_fields(std::as_const(adj).fields(), *dump + "/adjoint", error)) {
+            std::cerr << error << "\n";
+            return 1;
+        }
+        return 0;
+    }
 
     std::optional<Solver> main_solver = make(compare ? "cpu" : backend);
     if (!main_solver) {

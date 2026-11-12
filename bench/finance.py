@@ -237,6 +237,151 @@ def heston_float64(nx_target, p):
     return float(RectBivariateSpline(v, x, V, kx=3, ky=3)(p["v0"], math.log(100.0))[0, 0])
 
 
+HESTON_ADI_LAW = os.path.join(HERE, "laws", "heston_adi.law")
+MODEL = ("kappa", "theta", "sig_v", "rho", "r")
+
+
+def cell_payoff(x, h, strikes):
+    """A put's payoff averaged over each cell (rows: strikes), not taken at its centre: a strike's kink falls inside a
+    cell, and sampling it there is a first-order error."""
+    ks = np.asarray(strikes, np.float64)[:, None]
+    lo = np.minimum(x[None, :] - 0.5 * h, np.log(ks))
+    hi = np.minimum(x[None, :] + 0.5 * h, np.log(ks))
+    return (ks * (hi - lo) - (np.exp(hi) - np.exp(lo))) / h
+
+
+def adi_state(nx_target, planes, vmax=0.6, xw=3.0):
+    """heston_adi.law's start: one z-plane an option (planes: dicts with K and the MODEL numbers). The variance lattice
+    of a plane is its own sig_v times y (ny from the smallest sig_v, so every plane reaches vmax)."""
+    h = 2 * xw / nx_target
+    nx = int(round(2 * xw / h))
+    ny = int(math.ceil(vmax / (min(q["sig_v"] for q in planes) * h)))
+    x = math.log(K) - xw + (np.arange(nx) + 0.5) * h
+    nz = len(planes)
+    sig = np.array([q["sig_v"] for q in planes])
+    var = sig[:, None] * (np.arange(ny) + 0.5)[None, :] * h  # (nz, ny)
+    state = {"V": cell_payoff(x, h, [q["K"] for q in planes])[:, None, :] * np.ones((1, ny, 1)),
+             "var": np.broadcast_to(var[:, :, None], (nz, ny, nx))}
+    for name in MODEL:
+        state[name] = np.broadcast_to(np.array([q[name] for q in planes])[:, None, None], (nz, ny, nx))
+    return state, x, var, h
+
+
+def run_heston_adi(nx_target, steps, backend, work, planes, vmax=0.6, every=None, timing=False):
+    """Every plane's put at (100, its v0) after T, by the ADI law. every: also the states on the way (maturities).
+    Returns (prices [maturity][plane], the card time of a step or None)."""
+    state, x, var, h = adi_state(nx_target, planes, vmax)
+    nz, ny, nx = state["V"].shape
+    tag = f"{nx}_{nz}_{steps}_{backend}"
+    scene = write_scene(os.path.join(work, f"adi_{tag}.scene"), (nx, ny, nz, h), [HESTON_ADI_LAW])
+    start = write_state(os.path.join(work, f"adi_init_{tag}"), state, h)
+    out = os.path.join(work, f"adi_out_{tag}")
+    every = every or steps
+    args = ["--scene", scene, "--init", start, "--steps", str(steps), "--dt", repr(T / steps), "--backend", backend]
+    lawc(*args, "--dump", out, "--every", str(every))
+    prices = []
+    for s in range(every, steps + 1, every):
+        V = read_state(os.path.join(out, f"step_{s}"))[0]["V"].astype(np.float64)
+        prices.append([float(RectBivariateSpline(var[z], x, V[z], kx=3, ky=3)(planes[z]["v0"], math.log(100.0))[0, 0])
+                       for z in range(nz)])
+    card = lawc_json(*args, "--steps", str(min(steps, 50)), "--warmup", "3")["gpu_ms"] if timing and backend == "cuda" else None
+    return prices, card
+
+
+def feller_batch(n, seed=7):
+    """n Heston puts with their own strike and model, drawn where the scheme's v = 0 row holds (Feller: 2 kappa theta >
+    sig_v^2, so the drift there points in): strikes 80-120, kappa 0.5-3, theta 0.02-0.09, sig_v 0.2-0.6, rho -0.9 to
+    -0.1, r 0-0.05, v0 0.02-0.1."""
+    rng = np.random.default_rng(seed)
+    out = []
+    while len(out) < n:
+        q = {"K": rng.uniform(80, 120), "kappa": rng.uniform(0.5, 3.0), "theta": rng.uniform(0.02, 0.09),
+             "sig_v": rng.uniform(0.2, 0.6), "rho": rng.uniform(-0.9, -0.1), "r": rng.uniform(0.0, 0.05), "v0": rng.uniform(0.02, 0.1)}
+        if 2 * q["kappa"] * q["theta"] > q["sig_v"] ** 2:
+            out.append(q)
+    return out
+
+
+def adi_sections(md, work, p, cpu_only, explicit_rows):
+    """Heston by ADI (heston_adi.law): convergence to 2048 cells, then batches (cuda only). Returns the results."""
+    out = {}
+    backend = "cpu" if cpu_only else "cuda"
+    md.append("\n## Heston by ADI (Hundsdorfer-Verwer), implicit through `tridiag_x` / `tridiag_y`\n\n"
+              "`heston_adi.law`: the same PDE, three-point operators (central drift, a forward difference on the v = 0 row), "
+              "the mixed derivative explicit, the y and x parts implicit, solved in increments (the delta form) so float32 "
+              "rounds changes, not prices. Steps = cells along x / 4 (dt ~ h: second order in both). Total card time = "
+              "steps x card time a step; the explicit scheme's beside it, same cells.\n\n")
+    sizes = (32, 64, 128) if cpu_only else (64, 128, 256, 512, 1024, 2048)
+    explicit = {r["nx"]: r for r in explicit_rows}
+    for v0 in (0.04, 0.2):
+        q = dict(p, v0=v0, K=K)
+        ref = heston_put(100.0, v0, q["kappa"], q["theta"], q["sig_v"], q["rho"], q["r"])
+        rows = []
+        for nx in sizes:
+            steps = max(nx // 4, 8)
+            prices, card = run_heston_adi(nx, steps, backend, work, [q], timing=True)
+            rows.append({"nx": nx, "steps": steps, "price": prices[0][0], "err": prices[0][0] - ref, "card_ms": card})
+            print(f"heston ADI v0 {v0} {nx}: {prices[0][0]:.6f} (error {prices[0][0] - ref:+.2e}) in {steps} steps"
+                  + (f", {card:.3f} ms a step" if card else ""))
+        o = orders([abs(r["err"]) for r in rows])
+        self_o = orders([abs(a["price"] - b["price"]) for a, b in zip(rows[:-1], rows[1:])])
+        md.append(f"v0 = {v0}, reference {ref:.5f}:\n\n| cells along x | steps | V(100, v0) | error | order | self-convergence order | "
+                  "card ms a step | card ms in all | explicit: steps, card ms in all |\n|---|---|---|---|---|---|---|---|---|\n")
+        for i, row in enumerate(rows):
+            card = f"{row['card_ms']:.3f} | {row['card_ms'] * row['steps']:.0f}" if row["card_ms"] else " | "
+            e = explicit.get(row["nx"]) if v0 == p["v0"] else None
+            ex = f"{e['steps']}, {e['timing']['gpu_ms'] * e['steps']:.0f}" if e and e.get("timing") else ""
+            so = f"{self_o[i - 2]:.2f}" if i >= 2 else ""
+            md.append(f"| {row['nx']} | {row['steps']} | {row['price']:.5f} | {row['err']:+.2e} | {order_cells(o, i)} | {so} | {card} | {ex} |\n")
+        md.append("\n")
+        out[f"v0_{v0}"] = {"reference": ref, "rows": rows, "order": o, "self_order": self_o}
+        print(f"heston ADI v0 {v0}: orders {['%.2f' % x for x in o]}")
+        if cpu_only:
+            errs = [abs(r["err"]) for r in rows]
+            assert errs[-1] < errs[0] / 3, f"Heston ADI at v0 {v0}: errors {errs}"
+    if cpu_only:
+        return out
+
+    # ---- a batch: one z-plane an option, every number of the model its own ----------------------------------------
+    nx, steps = 256, 64
+    same = dict(p, K=K)
+    md.append(f"### A batch: thousands of options in one run\n\nEvery z-plane of the lattice is an option: its strike in its "
+              f"payoff, its own kappa, theta, sig_v, rho and r as static fields. {nx} cells along x, {steps} steps. Card time "
+              "of a step against the batch (the same option repeated):\n\n| options | cells | card ms a step | card ms an option "
+              "(all steps) | options a second |\n|---|---|---|---|---|\n")
+    scaling = []
+    for count in (1, 16, 256, 1024):
+        prices, card = run_heston_adi(nx, steps, "cuda", work, [same] * count, timing=True)
+        state, _, _, _ = adi_state(nx, [same])
+        cells = state["V"].size * count
+        scaling.append({"options": count, "cells": cells, "card_ms": card, "per_option_ms": card * steps / count,
+                        "options_per_s": count / (card * steps) * 1000.0})
+        md.append(f"| {count} | {cells} | {card:.3f} | {card * steps / count:.2f} | {count / (card * steps) * 1000.0:.0f} |\n")
+        print(f"batch {count}: {card:.3f} ms a step, {count / (card * steps) * 1000.0:.0f} options a second")
+    out["scaling"] = scaling
+
+    batch = feller_batch(512)
+    quarters = 4
+    prices, card = run_heston_adi(nx, steps, "cuda", work, batch, every=steps // quarters, timing=True)
+    taus = [T * (k + 1) / quarters for k in range(quarters)]
+    exact = np.array([[heston_put(100.0, q["v0"], q["kappa"], q["theta"], q["sig_v"], q["rho"], q["r"], k=q["K"], t=t)
+                       for q in batch] for t in taus])
+    err = np.asarray(prices) - exact
+    out["batch"] = {"options": len(batch), "maturities": taus, "card_ms": card, "rms": float(np.sqrt(np.mean(err ** 2))),
+                    "max": float(np.max(np.abs(err))), "rms_by_maturity": [float(np.sqrt(np.mean(e ** 2))) for e in err],
+                    "rel_rms": float(np.sqrt(np.mean((err / np.maximum(exact, 0.5)) ** 2)))}
+    worst = np.unravel_index(int(np.argmax(np.abs(err))), err.shape)
+    wq = batch[worst[1]]
+    md.append(f"\n{len(batch)} different options (strike 80-120, kappa 0.5-3, theta 0.02-0.09, sig_v 0.2-0.6, rho -0.9 to -0.1, "
+              f"r 0-0.05, v0 0.02-0.1, Feller holding) and {quarters} maturities each, {len(batch) * quarters} prices from one run "
+              f"of {steps} steps ({card * steps:.0f} ms of card time), against the characteristic function: RMS error "
+              f"{out['batch']['rms']:.1e} (by maturity {', '.join(f'{e:.1e}' for e in out['batch']['rms_by_maturity'])}), worst "
+              f"{out['batch']['max']:.1e} (K {wq['K']:.1f}, sig_v {wq['sig_v']:.2f}, T {taus[worst[0]]:g}, v0 {wq['v0']:.3f}). "
+              f"The same lattice and step for every option: {nx} cells is the accuracy of the convergence table's row.\n")
+    print(f"batch of {len(batch)}: RMS {out['batch']['rms']:.1e}, worst {out['batch']['max']:.1e}")
+    return out
+
+
 def heston_surface(nx_target, strikes, quarters, work, p):
     """A price surface in one run: strikes along the lattice's z (heston.law couples nothing along z, so each plane is
     its own option: the payoff is the plane's), maturities as the states dumped on the way (tau = time to maturity).
@@ -456,6 +601,7 @@ def main(cpu_only=False):
                       f"{quarters} maturities) in the batch, against {one * steps:.1f} ms for a strike run alone.\n")
             print(f"surface: {len(strikes)} x {quarters} puts, RMS {heston['surface']['rms_err']:.1e}, card {card:.3f} ms a step "
                   f"(one strike {one:.3f})")
+        heston["adi"] = adi_sections(md, work, p, cpu_only, heston["heston"]["rows"])
         results["heston"] = heston
     save("finance_cpu" if cpu_only else "finance", results, "".join(md))
 

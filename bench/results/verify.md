@@ -11,6 +11,11 @@
 | advection | cpu | 256 | 4.985e-02 | 0.67 |
 | advection | cpu | 512 | 2.859e-02 | 0.80 |
 | advection | cpu | 1024 | 1.546e-02 | 0.89 |
+| implicit | cpu | 16 | 1.229e-02 |  |
+| implicit | cpu | 32 | 3.057e-03 | 2.01 |
+| implicit | cpu | 64 | 7.634e-04 | 2.00 |
+| implicit | cpu | 128 | 1.908e-04 | 2.00 |
+| implicit | cpu | 256 | 4.769e-05 | 2.00 |
 | diffusion | cuda | 16 | 3.279e-03 |  |
 | diffusion | cuda | 32 | 7.714e-04 | 2.09 |
 | diffusion | cuda | 64 | 1.005e-04 | 2.94 |
@@ -21,5 +26,10 @@
 | advection | cuda | 256 | 4.985e-02 | 0.67 |
 | advection | cuda | 512 | 2.859e-02 | 0.80 |
 | advection | cuda | 1024 | 1.546e-02 | 0.89 |
+| implicit | cuda | 16 | 1.229e-02 |  |
+| implicit | cuda | 32 | 3.057e-03 | 2.01 |
+| implicit | cuda | 64 | 7.633e-04 | 2.00 |
+| implicit | cuda | 128 | 1.912e-04 | 2.00 |
+| implicit | cuda | 256 | 5.100e-05 | 1.91 |
 
 Largest relative drift of the conserved total of T (float32, up to 2190 substeps): 1.5e-06

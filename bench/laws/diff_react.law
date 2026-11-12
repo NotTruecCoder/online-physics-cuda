@@ -1,0 +1,35 @@
+# PDEBENCH'S 2-D DIFFUSION-REACTION (FitzHugh-Nagumo; Takamoto et al. 2022, pdebench/data_gen/src/sim_diff_react.py),
+# as a law (bench/pdebench.py). On [-1, 1]^2, cell centred, zero normal flux at the walls (PDEBench's Laplacian drops a
+# missing neighbour: the edge cell repeating, as shift reads it):
+#
+#   u_t = Du lap u + u - u^3 - k - v        v_t = Dv lap v + u - v
+#
+# The Laplacian is the 2-D five-point one (shifts in x and y only), so every z-plane is its own sample: one run is a
+# batch. The classical Runge-Kutta method (fourth order) written with lets; the engine's Euler store takes the weighted rate.
+# cfl sets the step: RK4 is stable on the diffusion to dt Dv 8 / h^2 < 2.78 (cfl < 0.35).
+field u init 0 range -1000 1000
+field v init 0 range -1000 1000
+
+param du = 0.001
+param dv = 0.005
+param k = 0.005
+param cfl = 0.15
+
+term fitzhugh_nagumo
+  let fu0 = du * (shift(u, 1, 0, 0) + shift(u, -1, 0, 0) + shift(u, 0, 1, 0) + shift(u, 0, -1, 0) - 4 * u) / (h * h) + u - u * u * u - k - v
+  let fv0 = dv * (shift(v, 1, 0, 0) + shift(v, -1, 0, 0) + shift(v, 0, 1, 0) + shift(v, 0, -1, 0) - 4 * v) / (h * h) + u - v
+  let u1 = u + 0.5 * dt * fu0
+  let v1 = v + 0.5 * dt * fv0
+  let fu1 = du * (shift(u1, 1, 0, 0) + shift(u1, -1, 0, 0) + shift(u1, 0, 1, 0) + shift(u1, 0, -1, 0) - 4 * u1) / (h * h) + u1 - u1 * u1 * u1 - k - v1
+  let fv1 = dv * (shift(v1, 1, 0, 0) + shift(v1, -1, 0, 0) + shift(v1, 0, 1, 0) + shift(v1, 0, -1, 0) - 4 * v1) / (h * h) + u1 - v1
+  let u2 = u + 0.5 * dt * fu1
+  let v2 = v + 0.5 * dt * fv1
+  let fu2 = du * (shift(u2, 1, 0, 0) + shift(u2, -1, 0, 0) + shift(u2, 0, 1, 0) + shift(u2, 0, -1, 0) - 4 * u2) / (h * h) + u2 - u2 * u2 * u2 - k - v2
+  let fv2 = dv * (shift(v2, 1, 0, 0) + shift(v2, -1, 0, 0) + shift(v2, 0, 1, 0) + shift(v2, 0, -1, 0) - 4 * v2) / (h * h) + u2 - v2
+  let u3 = u + 1 * dt * fu2
+  let v3 = v + 1 * dt * fv2
+  let fu3 = du * (shift(u3, 1, 0, 0) + shift(u3, -1, 0, 0) + shift(u3, 0, 1, 0) + shift(u3, 0, -1, 0) - 4 * u3) / (h * h) + u3 - u3 * u3 * u3 - k - v3
+  let fv3 = dv * (shift(v3, 1, 0, 0) + shift(v3, -1, 0, 0) + shift(v3, 0, 1, 0) + shift(v3, 0, -1, 0) - 4 * v3) / (h * h) + u3 - v3
+  d u = (fu0 + 2 * fu1 + 2 * fu2 + fu3) / 6
+  d v = (fv0 + 2 * fv1 + 2 * fv2 + fv3) / 6
+  max_dt = cfl * h * h / max(du, dv)

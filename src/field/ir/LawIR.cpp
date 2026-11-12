@@ -52,6 +52,12 @@ const char* op_name(Op op)
     case Op::Mlp: return "mlp";
     case Op::Flux: return "flux";
     case Op::LDiffuse: return "ldiffuse";
+    case Op::Dt: return "dt";
+    case Op::Tridiag: return "tridiag";
+    case Op::ShiftT: return "shift_t";
+    case Op::GxT: return "gx_t";
+    case Op::GyT: return "gy_t";
+    case Op::GzT: return "gz_t";
     }
     return "?";
 }
@@ -126,7 +132,7 @@ public:
         in.number = n.number;
         in.index = n.index;
         in.iterations = n.iterations;
-        if (n.op == Op::Shift) {
+        if (n.op == Op::Shift || n.op == Op::ShiftT) {
             in.args.push_back(lower(*n.args[0]));
             for (int a = 0; a < 3; ++a) {
                 in.offset[a] = static_cast<int>(n.args[static_cast<std::size_t>(a) + 1]->number);
@@ -246,11 +252,12 @@ private:
     int add(Inst in)
     {
         switch (in.op) {
-        case Op::Const: case Op::Param: case Op::Cell: case Op::Local: case Op::MaxOf: case Op::MinOf: case Op::SumOf:
+        case Op::Const: case Op::Param: case Op::Cell: case Op::Dt: case Op::Local: case Op::MaxOf: case Op::MinOf: case Op::SumOf:
             in.shape = Shape::Scalar;
             break;
         case Op::Field: case Op::Rim: case Op::Distance: case Op::Poisson: case Op::Fall: case Op::Spread: case Op::Topple:
         case Op::Flux: case Op::LDiffuse: case Op::Lap: case Op::Gx: case Op::Gy: case Op::Gz: case Op::Diffuse: case Op::Adv:
+        case Op::Tridiag: case Op::ShiftT: case Op::GxT: case Op::GyT: case Op::GzT:
             in.shape = Shape::Cell;
             break;
         default:
@@ -270,10 +277,17 @@ private:
         case Op::Shift:
             in.radius = std::max({std::abs(in.offset[0]), std::abs(in.offset[1]), std::abs(in.offset[2])});
             break;
+        case Op::ShiftT: // the edge cell gathers a run as long as the offset, plus its own
+            in.radius = std::max({std::abs(in.offset[0]), std::abs(in.offset[1]), std::abs(in.offset[2])});
+            break;
+        case Op::GxT: case Op::GyT: case Op::GzT:
+            in.radius = 1;
+            break;
         default:
             break;
         }
-        in.global = in.op == Op::Distance || in.op == Op::Poisson || in.op == Op::MaxOf || in.op == Op::MinOf || in.op == Op::SumOf;
+        in.global = in.op == Op::Distance || in.op == Op::Poisson || in.op == Op::MaxOf || in.op == Op::MinOf || in.op == Op::SumOf ||
+            in.op == Op::Tridiag;
         in.net = in.op == Op::Mlp || in.op == Op::Flux || in.op == Op::LDiffuse;
 
         std::ostringstream key;
@@ -309,7 +323,10 @@ void plan_stages(Module& m)
             const bool stored = m.is_stage(a);
             int c = stored ? 1 : arg.cost;
             // A stencil reads its argument at several points; past the budget the argument is stored once instead.
-            if (in.radius > 0 && !stored && arg.shape == Shape::Cell && arg.op != Op::Field && c * per > kInlineBudget) {
+            // A tridiagonal solve walks its lines one cell after another: what it reads is computed over the lattice
+            // first, by every thread at once, so the serial walk only loads.
+            const bool walked = in.op == Op::Tridiag && arg.op != Op::Field;
+            if (!stored && arg.shape == Shape::Cell && arg.op != Op::Field && (walked || (in.radius > 0 && c * per > kInlineBudget))) {
                 m.materialized[static_cast<std::size_t>(a)] = 1;
                 c = 1;
             }
@@ -597,6 +614,9 @@ std::string describe(const Module& m, const Law& law)
         }
         if (in.op == Op::Shift) {
             out << " (" << in.offset[0] << ',' << in.offset[1] << ',' << in.offset[2] << ')';
+        }
+        if (in.op == Op::Tridiag) {
+            out << " along " << "xyz"[in.index];
         }
         out << "   [" << (in.shape == Shape::Cell ? "cell" : "scalar");
         if (in.radius > 0) {

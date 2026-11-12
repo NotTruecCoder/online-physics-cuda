@@ -22,8 +22,9 @@ jobs:
         run: ctest --preset linux-core -LE slow --timeout 900
 
   # The JAX twin against the C++ reference (the whole shipped law, a few steps, field by field), and the numerical
-  # checks that need no card: convergence orders (verify.py) and the finance PDEs (finance.py --cpu) on the CPU
-  # reference, each asserting its orders. Their tables are uploaded.
+  # checks that need no card: convergence orders (verify.py, Crank-Nicolson through tridiag_x among them), the finance
+  # PDEs (finance.py --cpu: explicit and ADI Heston) and the IR's reverse mode against jax.grad (adjoint.py), on the CPU
+  # reference, each asserting what it checks. Their tables are uploaded.
   lawjax-parity:
     runs-on: ubuntu-24.04
     needs: linux-core
@@ -45,9 +46,12 @@ jobs:
         run: python bench/verify.py
       - name: Finance on the CPU
         run: python bench/finance.py --cpu
+      - name: Reverse mode generated from the IR, against jax.grad
+        run: python bench/adjoint.py
       - uses: actions/upload-artifact@v4
         with:
           name: numerics-cpu
           path: |
             bench/results/verify_cpu.*
             bench/results/finance_cpu.*
+            bench/results/adjoint_cpu.*

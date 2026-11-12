@@ -1,0 +1,52 @@
+# HESTON, IMPLICIT (bench/finance.py): the PDE of heston.law, x = ln S along x, var = sig_v * y along y, taken by the
+# Hundsdorfer-Verwer ADI scheme: second order in dt at any dt, the industry's standard for Heston (In 't Hout & Foulon
+# 2010). F = A0 + A1 + A2: A0 the mixed derivative (explicit only), A1 everything along x, A2 everything along y, each
+# with half of -r V.
+#
+#   Y0 = U + dt F(U)
+#   Y1 = Y0 + th dt (A1 Y1 - A1 U)          (I - th dt A1) Y1 = Y0 - th dt A1 U    tridiag_x
+#   Y2 = Y1 + th dt (A2 Y2 - A2 U)          (I - th dt A2) Y2 = Y1 - th dt A2 U    tridiag_y
+#   Z0 = Y0 + dt / 2 (F(Y2) - F(U))
+#   Z1, Z2 as Y1, Y2 from Z0, about Y2;      U' = Z2,  th = 1/2 + sqrt(3)/6
+#
+# Solved in increments (the delta form): D = Y2 - U, E = Z2 - Y2, so every solve and every sum is of small changes, not of
+# V: in float32, V + dt F(V) at dt var / h^2 ~ 100 would cancel terms of 10^4 every step.
+#
+#   (I - th dt A1) D1 = dt F(U)     (I - th dt A2) D2 = D1
+#   (I - th dt A1) E1 = dt F(U) - D2 + dt / 2 F(D2)     (I - th dt A2) E2 = E1     U' = U + D2 + E2
+#
+# A1, A2 are three-point operators, second order: 1/2 var V_xx + (r - var/2) V_x central; the y flux with exact face
+# variances (var +- sig_v h / 2, as heston.law) and the drift b = kappa (theta - var) / sig_v - sig_v / 2 central, except on
+# the first row (var = sig_v h / 2, the v = 0 boundary), where the diffusion's face carries nothing and the drift, which
+# points in (Feller), is a forward difference. F applies them to differences (lx (W(x-1) - W) + ...; each row's
+# coefficients sum to -r/2). The edge cell repeats past the ends, the same for shift and tridiag, so the implicit operators
+# are exactly the explicit ones. No max_dt: stable at any step.
+#
+# The model's numbers are static fields, not params: every z-plane of the lattice is its own option (strike in its
+# payoff, its own kappa, theta, sig_v, rho, r), so one run prices a batch (bench/finance.py). The driver writes var.
+field V init 0 range -1 1000000
+field var init 0 range 0 100 static
+field kappa init 1.5 range 0 100 static
+field theta init 0.04 range 0 10 static
+field sig_v init 0.3 range 0.001 10 static
+field rho init -0.9 range -1 1 static
+field r init 0.025 range -1 1 static
+
+param adi = 0.7886751345948129   # theta of the scheme: 1/2 + sqrt(3)/6
+
+term heston_hv
+  let e0 = step(sig_v * h - var)
+  let b = kappa * (theta - var) / sig_v - 0.5 * sig_v
+  let lx = 0.5 * var / (h * h) - (r - 0.5 * var) / (2 * h)
+  let ux = 0.5 * var / (h * h) + (r - 0.5 * var) / (2 * h)
+  let ly = 0.5 * (var - 0.5 * sig_v * h) / (h * h) - (1 - e0) * b / (2 * h)
+  let uy = 0.5 * (var + 0.5 * sig_v * h) / (h * h) + (1 + e0) * b / (2 * h)
+  let cx = 0 - lx - ux - 0.5 * r
+  let cy = 0 - ly - uy - 0.5 * r
+  let fu = rho * var * gx(gy(V)) + lx * (shift(V, -1, 0, 0) - V) + ux * (shift(V, 1, 0, 0) - V) + ly * (shift(V, 0, -1, 0) - V) + uy * (shift(V, 0, 1, 0) - V) - r * V
+  let d1 = tridiag_x(0 - adi * dt * lx, 1 - adi * dt * cx, 0 - adi * dt * ux, dt * fu)
+  let d2 = tridiag_y(0 - adi * dt * ly, 1 - adi * dt * cy, 0 - adi * dt * uy, d1)
+  let fd = rho * var * gx(gy(d2)) + lx * (shift(d2, -1, 0, 0) - d2) + ux * (shift(d2, 1, 0, 0) - d2) + ly * (shift(d2, 0, -1, 0) - d2) + uy * (shift(d2, 0, 1, 0) - d2) - r * d2
+  let e1 = tridiag_x(0 - adi * dt * lx, 1 - adi * dt * cx, 0 - adi * dt * ux, dt * fu - d2 + 0.5 * dt * fd)
+  let e2 = tridiag_y(0 - adi * dt * ly, 1 - adi * dt * cy, 0 - adi * dt * uy, e1)
+  d V = (d2 + e2) / dt

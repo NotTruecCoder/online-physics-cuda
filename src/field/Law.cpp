@@ -135,6 +135,8 @@ const std::map<std::string, FunctionSpec, std::less<>>& functions()
         {"maxof", {Op::MaxOf, 1, 1}},   {"minof", {Op::MinOf, 1, 1}},     {"sumof", {Op::SumOf, 1, 1}},
         {"fall", {Op::Fall, 3, 3}},     {"spread", {Op::Spread, 3, 3}},   {"topple", {Op::Topple, 3, 3}},
         {"shift", {Op::Shift, 4, 4}},
+        {"shift_t", {Op::ShiftT, 4, 4}}, {"gx_t", {Op::GxT, 1, 1}}, {"gy_t", {Op::GyT, 1, 1}}, {"gz_t", {Op::GzT, 1, 1}},
+        {"tridiag_x", {Op::Tridiag, 4, 4}}, {"tridiag_y", {Op::Tridiag, 4, 4}}, {"tridiag_z", {Op::Tridiag, 4, 4}},
         // The first argument of these is a net's name, not an expression.
         {"mlp", {Op::Mlp, 2, 33}},      {"flux", {Op::Flux, 2, 9}},       {"ldiffuse", {Op::LDiffuse, 3, 3}},
     };
@@ -161,6 +163,12 @@ public:
     }
 
     [[nodiscard]] bool at_end() const { return tokens_[pos_].kind == Token::End; }
+    // A term's `let` names: one node each, so every use of a name is the same value (computed once).
+    Parser& with(const std::map<std::string, NodePtr, std::less<>>& lets)
+    {
+        lets_ = &lets;
+        return *this;
+    }
     [[nodiscard]] bool ok() const { return error_.empty(); }
     [[nodiscard]] const std::string& error() const { return error_; }
 
@@ -266,6 +274,9 @@ private:
             return constant(0.0);
         }
         NodePtr node = make(spec.op);
+        if (spec.op == Op::Tridiag) {
+            node->index = function.back() - 'x'; // the axis its lines run along
+        }
         if (net >= 0) {
             args.erase(args.begin());
             node->index = net;
@@ -308,7 +319,7 @@ private:
             }
             return node;
         }
-        if (spec.op == Op::Shift) {
+        if (spec.op == Op::Shift || spec.op == Op::ShiftT) {
             // The offsets are whole cells, fixed when the law is written: shift(F, 0, 0, -1) is "F
             // in the cell below".
             for (std::size_t a = 1; a < 4; ++a) {
@@ -334,11 +345,19 @@ private:
         if (text == "h") {
             return make(Op::Cell);
         }
+        if (text == "dt") {
+            return make(Op::Dt);
+        }
         if (text == "rim") {
             return make(Op::Rim);
         }
         if (text == "pi") {
             return constant(3.14159265358979323846);
+        }
+        if (lets_ != nullptr) {
+            if (const auto found = lets_->find(text); found != lets_->end()) {
+                return found->second;
+            }
         }
         if (locals_ != nullptr) {
             const auto found = std::find(locals_->begin(), locals_->end(), text);
@@ -386,6 +405,7 @@ private:
     std::size_t pos_ = 0;
     const Law& law_;
     const std::vector<std::string>* locals_ = nullptr;
+    const std::map<std::string, NodePtr, std::less<>>* lets_ = nullptr;
     std::string error_;
 };
 
@@ -748,6 +768,8 @@ Value evaluate_node(Node& node, const EvalContext& context)
         return Value{.scalar = (*context.params)[static_cast<std::size_t>(node.index)]};
     case Op::Cell:
         return Value{.scalar = h};
+    case Op::Dt:
+        return Value{.scalar = context.dt};
     case Op::Rim:
         node.buffer.resize(n);
         for_each_cell(l, [&](std::size_t i, int x, int y, int z) {
@@ -844,6 +866,63 @@ Value evaluate_node(Node& node, const EvalContext& context)
             }
         });
         return settle(node.buffer);
+    }
+    case Op::ShiftT:
+    case Op::GxT:
+    case Op::GyT:
+    case Op::GzT: {
+        // Transposes: what each cell sent to the cells that read it, gathered back. Along an axis with offset d the
+        // cells i that read j (clamp(i + d) = j) are one run: j - d inside, everything clamped onto an edge cell there.
+        const Value a = evaluate(*node.args[0], context);
+        node.buffer.resize(n);
+        const int counts[3] = {l.nx, l.ny, l.nz};
+        auto run = [](int j, int d, int count, int& lo, int& hi) {
+            lo = std::max(j == 0 ? 0 : j - d, 0);
+            hi = std::min(j == count - 1 ? count - 1 : j - d, count - 1);
+        };
+        auto at = [&](int x, int y, int z) {
+            return a.at(static_cast<std::size_t>(z) * l.sz + static_cast<std::size_t>(y) * l.sy + static_cast<std::size_t>(x));
+        };
+        if (node.op == Op::ShiftT) {
+            const int d[3] = {static_cast<int>(node.args[1]->number), static_cast<int>(node.args[2]->number),
+                static_cast<int>(node.args[3]->number)};
+            for_each_cell(l, [&](std::size_t i, int x, int y, int z) {
+                int lo[3], hi[3];
+                const int c[3] = {x, y, z};
+                for (int k = 0; k < 3; ++k) {
+                    run(c[k], d[k], counts[k], lo[k], hi[k]);
+                }
+                double sum = 0.0;
+                for (int zz = lo[2]; zz <= hi[2]; ++zz)
+                    for (int yy = lo[1]; yy <= hi[1]; ++yy)
+                        for (int xx = lo[0]; xx <= hi[0]; ++xx)
+                            sum += at(xx, yy, zz);
+                node.buffer[i] = static_cast<float>(sum);
+            });
+            return Value{.array = node.buffer.data()};
+        }
+        // g(i) = (F(clamp(i + 1)) - F(clamp(i - 1))) / (h span(i)): its transpose sends a(i) / (h span(i)) to both.
+        const int axis = node.op == Op::GxT ? 0 : (node.op == Op::GyT ? 1 : 2);
+        const int count = counts[axis];
+        auto weight = [&](int x, int y, int z) {
+            const int c[3] = {x, y, z};
+            const int span = std::min(c[axis] + 1, count - 1) - std::max(c[axis] - 1, 0);
+            return span > 0 ? at(x, y, z) / (h * span) : 0.0;
+        };
+        for_each_cell(l, [&](std::size_t i, int x, int y, int z) {
+            double sum = 0.0;
+            for (const int d : {1, -1}) {
+                const int c[3] = {x, y, z};
+                int lo = 0, hi = -1;
+                run(c[axis], d, count, lo, hi);
+                for (int q = lo; q <= hi; ++q) {
+                    const double w = axis == 0 ? weight(q, y, z) : (axis == 1 ? weight(x, q, z) : weight(x, y, q));
+                    sum += d > 0 ? w : -w;
+                }
+            }
+            node.buffer[i] = static_cast<float>(sum);
+        });
+        return Value{.array = node.buffer.data()};
     }
     case Op::Shift: {
         // The value a few cells away: what lies below, above, beside. Clamped at the edge, like every
@@ -1013,6 +1092,47 @@ Value evaluate_node(Node& node, const EvalContext& context)
                 d = any_inside ? (std::sqrt(static_cast<double>(to_inside[i])) - 0.5) * h : far;
             }
             node.buffer[i] = static_cast<float>(d);
+        });
+        return Value{.array = node.buffer.data()};
+    }
+    case Op::Tridiag: {
+        const Value lo = evaluate(*node.args[0], context);
+        const Value di = evaluate(*node.args[1], context);
+        const Value up = evaluate(*node.args[2], context);
+        const Value rhs = evaluate(*node.args[3], context);
+        node.buffer.resize(n);
+        const int axis = node.index;
+        const int count = axis == 0 ? l.nx : (axis == 1 ? l.ny : l.nz);
+        const std::size_t stride = axis == 0 ? l.sx : (axis == 1 ? l.sy : l.sz);
+        const std::size_t lines = n / static_cast<std::size_t>(count);
+        // Line k starts at the cell whose coordinate along the axis is 0: the other two coordinates enumerate k.
+        auto first = [&](std::size_t k) -> std::size_t {
+            if (axis == 0) return k * static_cast<std::size_t>(l.nx);
+            if (axis == 1) return (k / static_cast<std::size_t>(l.nx)) * l.sz + k % static_cast<std::size_t>(l.nx);
+            return k;
+        };
+        // In double, one line at a time (lines are independent: the bits do not depend on the threads).
+        parallel_blocks(lines, [&](std::size_t k0, std::size_t k1) {
+            std::vector<double> c(static_cast<std::size_t>(count));
+            std::vector<double> d(static_cast<std::size_t>(count));
+            for (std::size_t k = k0; k < k1; ++k) {
+                const std::size_t base = first(k);
+                for (int i = 0; i < count; ++i) {
+                    const std::size_t at = base + static_cast<std::size_t>(i) * stride;
+                    const double a = lo.at(at);
+                    const double u = up.at(at);
+                    // The edge cell repeats past the ends: its neighbour's coefficient lands on the diagonal.
+                    const double b = di.at(at) + (i == 0 ? a : 0.0) + (i + 1 == count ? u : 0.0);
+                    const double m = i == 0 ? b : b - a * c[static_cast<std::size_t>(i - 1)];
+                    c[static_cast<std::size_t>(i)] = i + 1 == count ? 0.0 : u / m;
+                    d[static_cast<std::size_t>(i)] = (rhs.at(at) - (i == 0 ? 0.0 : a * d[static_cast<std::size_t>(i - 1)])) / m;
+                }
+                double next = 0.0;
+                for (int i = count - 1; i >= 0; --i) {
+                    next = d[static_cast<std::size_t>(i)] - c[static_cast<std::size_t>(i)] * next;
+                    node.buffer[base + static_cast<std::size_t>(i) * stride] = static_cast<float>(next);
+                }
+            }
         });
         return Value{.array = node.buffer.data()};
     }
@@ -1506,9 +1626,15 @@ struct Line {
 bool is_reserved(std::string_view name)
 {
     static const std::set<std::string, std::less<>> reserved = {
-        "field", "param", "term", "derive", "creature", "show", "d", "conserves", "max_dt", "h", "pi", "inf",
-        "init", "range", "unit", "static", "clamp", "net", "learned", "plan", "observe"};
+        "field", "param", "term", "derive", "creature", "show", "d", "conserves", "max_dt", "h", "dt", "pi", "inf",
+        "init", "range", "unit", "static", "clamp", "net", "learned", "plan", "observe", "let"};
     return reserved.contains(name) || functions().contains(name);
+}
+
+// max_dt sets the step, so it cannot read it.
+bool reads_dt(const Node& n)
+{
+    return n.op == Op::Dt || std::any_of(n.args.begin(), n.args.end(), [](const NodePtr& a) { return reads_dt(*a); });
 }
 
 bool parse_bound(const std::vector<Token>& t, std::size_t& i, double& out)
@@ -1736,13 +1862,14 @@ CompileResult compile_law(const std::vector<LawSource>& sources)
 
     // Pass 2: params (in order: a param may use earlier params), terms, derives and creatures.
     Term* current = nullptr;
+    std::map<std::string, NodePtr, std::less<>> lets; // the current term's
     CreatureDef* creature = nullptr;
     std::set<int> derived_targets;
     for (const Line& line : lines) {
         const std::vector<Token>& t = line.tokens;
         auto fail = [&](const std::string& message) { result.errors.push_back(line.where + ": " + message); };
         if (t[0].kind != Token::Name) {
-            fail("a line starts with a keyword (field, param, term, derive, creature, d, conserves, max_dt)");
+            fail("a line starts with a keyword (field, param, term, let, derive, creature, d, conserves, max_dt)");
             continue;
         }
         const std::string& keyword = t[0].text;
@@ -2028,6 +2155,31 @@ CompileResult compile_law(const std::vector<LawSource>& sources)
             }
             law.terms.push_back(Term{.name = t[1].text, .where = line.where});
             current = &law.terms.back();
+            lets.clear();
+            continue;
+        }
+        if (keyword == "let") {
+            // let NAME = expression: a name for a value within this term (an implicit scheme's stages read as text).
+            if (current == nullptr) {
+                fail("'let' outside a term");
+                continue;
+            }
+            if (t[1].kind != Token::Name || !(t[2].kind == Token::Symbol && t[2].text == "=")) {
+                fail("expected 'let NAME = expression'");
+                continue;
+            }
+            const std::string& name = t[1].text;
+            if (is_reserved(name) || law.field_id(name) >= 0 || law.param_id(name) >= 0 || lets.contains(name)) {
+                fail("'" + name + "' is already a keyword, field, param or let");
+                continue;
+            }
+            Parser parser(t, 3, law);
+            NodePtr expr = parser.with(lets).expression();
+            if (!parser.ok() || !parser.at_end()) {
+                fail(parser.ok() ? "trailing tokens after the expression" : parser.error());
+                continue;
+            }
+            lets.emplace(name, expr);
             continue;
         }
         if (keyword == "derive") {
@@ -2071,7 +2223,7 @@ CompileResult compile_law(const std::vector<LawSource>& sources)
                     continue;
                 }
                 Parser parser(t, 4, law);
-                NodePtr expr = parser.expression();
+                NodePtr expr = parser.with(lets).expression();
                 if (!parser.ok() || !parser.at_end()) {
                     fail(parser.ok() ? "trailing tokens after the expression" : parser.error());
                     continue;
@@ -2080,8 +2232,8 @@ CompileResult compile_law(const std::vector<LawSource>& sources)
             } else if (t[1].kind == Token::Name && t[1].text == "max_dt" && t[2].kind == Token::Symbol && t[2].text == "=") {
                 Parser parser(t, 3, law);
                 NodePtr expr = parser.expression();
-                if (!parser.ok() || !parser.at_end() || !always_scalar(*expr)) {
-                    fail(parser.ok() ? "learned max_dt must be a number" : parser.error());
+                if (!parser.ok() || !parser.at_end() || !always_scalar(*expr) || reads_dt(*expr)) {
+                    fail(parser.ok() ? "learned max_dt must be a number that does not read dt" : parser.error());
                     continue;
                 }
                 current->learned_max_dt = expr;
@@ -2102,7 +2254,7 @@ CompileResult compile_law(const std::vector<LawSource>& sources)
                     continue;
                 }
                 Parser parser(t, 3, law);
-                NodePtr expr = parser.expression();
+                NodePtr expr = parser.with(lets).expression();
                 if (!parser.ok() || !parser.at_end()) {
                     fail(parser.ok() ? "trailing tokens after the expression" : parser.error());
                     continue;
@@ -2141,6 +2293,10 @@ CompileResult compile_law(const std::vector<LawSource>& sources)
                 }
                 if (!always_scalar(*expr)) {
                     fail("max_dt must be a number: use maxof/minof/sumof to reduce a field");
+                    continue;
+                }
+                if (reads_dt(*expr)) {
+                    fail("max_dt sets the step: it cannot read dt");
                     continue;
                 }
                 current->max_dt = expr;
@@ -2251,7 +2407,8 @@ CompileResult compile_law(const std::vector<LawSource>& sources)
             switch (node.op) {
             case Op::Lap: case Op::Gx: case Op::Gy: case Op::Gz: case Op::Diffuse: case Op::Adv:
             case Op::Distance: case Op::Poisson: case Op::MaxOf: case Op::MinOf: case Op::SumOf:
-            case Op::Fall: case Op::Spread: case Op::Topple: case Op::Shift: case Op::Flux: case Op::LDiffuse:
+            case Op::Fall: case Op::Spread: case Op::Topple: case Op::Shift: case Op::Flux: case Op::LDiffuse: case Op::Tridiag:
+            case Op::ShiftT: case Op::GxT: case Op::GyT: case Op::GzT:
                 lattice_op = "a lattice op";
                 break;
             default:
@@ -2293,6 +2450,8 @@ double evaluate_at(const Node& node, const PointContext& c)
         return (*c.params)[static_cast<std::size_t>(node.index)];
     case Op::Cell:
         return c.fields->shape().cell;
+    case Op::Dt:
+        return 0.0;
     case Op::Rim:
         return 0.0; // a creature is never on the rim as far as it can tell
     case Op::Local:
@@ -2432,6 +2591,19 @@ public:
             return law_.param_names[static_cast<std::size_t>(node.index)];
         case Op::Cell:
             return "h";
+        case Op::Dt:
+            return "Δt";
+        case Op::ShiftT:
+            return "shiftᵀ(" + a(0) + ", " + number_text(node.args[1]->number) + ", " + number_text(node.args[2]->number) + ", " +
+                number_text(node.args[3]->number) + ")";
+        case Op::GxT:
+            return "∂ₓᵀ" + wrap(0, 5);
+        case Op::GyT:
+            return "∂ᵧᵀ" + wrap(0, 5);
+        case Op::GzT:
+            return "∂_zᵀ" + wrap(0, 5);
+        case Op::Tridiag:
+            return std::string("tri") + "xyz"[node.index] + "⁻¹(" + a(0) + ", " + a(1) + ", " + a(2) + " | " + a(3) + ")";
         case Op::Rim:
             return "rim";
         case Op::Local:

@@ -1,0 +1,10 @@
+# DIFFUSION, IMPLICIT (bench/verify.py): dT/dt = k T_xx by Crank-Nicolson, the implicit half through tridiag_x.
+#   (I - dt/2 A) T' = (I + dt/2 A) T,  A T = k (T(x+1) - 2 T + T(x-1)) / h^2, the edge cell repeating (zero flux)
+# Second order in h and in dt, stable at any dt: no max_dt. The rate is (T' - T) / dt, so the engine's Euler store
+# T + dt * rate lands on T'.
+field T init 0 range -1000000 1000000
+
+param k = 0.01
+
+term crank_nicolson
+  d T = (tridiag_x(-0.5 * k * dt / (h * h), 1 + k * dt / (h * h), -0.5 * k * dt / (h * h), T + 0.5 * k * dt * (shift(T, 1, 0, 0) - 2 * T + shift(T, -1, 0, 0)) / (h * h)) - T) / dt
